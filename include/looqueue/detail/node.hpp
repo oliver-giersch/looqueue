@@ -3,6 +3,8 @@
 
 #include <array>
 #include <atomic>
+#include <cassert>
+#include <limits>
 
 #include <looqueue/queue_fwd.hpp>
 
@@ -80,66 +82,56 @@ struct queue<T>::node_t {
     }
   }
 
-  void incr_enqueue_count() {
-    const auto mask = this->tail_cnt.fetch_add(1, std::memory_order_relaxed);
-    const auto curr_count = 1 + (mask & counter_consts_t::MASK);
-    const auto final_count = mask >> counter_consts_t::SHIFT;
+  void incr_enqueue_count(const std::uint64_t final_count = 0) {
+    assert(final_count < std::numeric_limits<std::uint_16t>::max());
+    const auto counts = incr_count(this->tail_cnt, static_cast<std::uint16t>(final_count));
 
     this->try_reclaim_after_incr(
-      curr_count,
-      final_count,
+      ccounts,
       reclaim_consts_t::ENQUE,
       reclaim_consts_t::SLOTS | reclaim_consts_t::DEQUE
     );
   }
 
-  void incr_enqueue_count_final(const std::uint32_t final_count) {
-    const auto add = 1 + (final_count << counter_consts_t::SHIFT);
-    const auto mask = this->tail_cnt.fetch_add(add, std::memory_order_relaxed);
-    const auto curr_count = 1 + (mask & counter_consts_t::MASK);
+  void incr_dequeue_count(const std::uint64_t final_count = 0) {
+    assert(final_count < std::numeric_limits<std::uint_16t>::max());
+    const auto counts = incr_count(this->head_cnt, static_cast<std::uint16t>(final_count));
 
     this->try_reclaim_after_incr(
-      curr_count,
-      final_count,
-      reclaim_consts_t::ENQUE,
-      reclaim_consts_t::SLOTS | reclaim_consts_t::DEQUE
-    );
-  }
-
-  void incr_dequeue_count() {
-    const auto mask = this->head_cnt.fetch_add(1, std::memory_order_relaxed);
-    const auto curr_count = 1 + (mask & counter_consts_t::MASK);
-    const auto final_count = mask >> counter_consts_t::SHIFT;
-
-    this->try_reclaim_after_incr(
-      curr_count,
-      final_count,
-      reclaim_consts_t::DEQUE,
-      reclaim_consts_t::ENQUE | reclaim_consts_t::SLOTS
-    );
-  }
-
-  void incr_dequeue_count_final() {
-    const auto add = 1 + (final_count << counter_consts_t::SHIFT);
-    const auto mask = this->head_cnt.fetch_add(add, std::memory_order_relaxed);
-    const auto curr_count = 1 + (mask & counter_consts_t::MASK);
-
-    this->try_reclaim_after_incr(
-      curr_count,
-      final_count,
+      counts,
       reclaim_consts_t::DEQUE,
       reclaim_consts_t::ENQUE | reclaim_consts_t::SLOTS
     );
   }
 
 private:
+  struct counts_t {
+    std::uint16_t curr_count, final_count;
+  };
+
+  static counts_t incr_count(
+    std::atomic<std::uint32_t>& counter,
+    const std::uint16_t final_count = 0
+  ) {
+    const auto add = final_count == 0
+      ? 1
+      : 1 + (static_cast<std::uint32_t>(final_count) << counter_consts_t::SHIFT);
+    const auto mask = counter.fetch_add(add, std::memory_order_relaxed);
+
+    return {
+      1 + (static_cast<std::uint16_t>(mask & counter_consts_t::MASK)),
+      final_count == 0
+        ? static_cast<std::uint16_t>(mask >> counter_consts_t::SHIFT)
+        : final_count‚
+    };
+  }
+
   void try_reclaim_after_incr(
-    const std::uint16_t curr_count,
-    const std::uint16_t final_count,
+    const counts_t counts,
     const std::uint8_t  flag_bit,
     const std::uint8_t  expected_flags
   ) {
-    if (curr_count == final_count) {
+    if (counts.curr_count == counts.final_count) {
       const auto flags = this->reclaim_flags.fetch_add(flag_bit, std::memory_order_acq_rel);
       if (flags == expected_flags) {
         delete this;

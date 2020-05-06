@@ -117,7 +117,8 @@ queue<T>::pointer queue<T>::dequeue() {
 
       continue;
     } else {
-      // ** slow path **
+      // ** slow path ** the current head node has been fully consumed and must be replaced by its
+      // successor, if there is one
       switch (this->try_advance_head(curr, head.ptr, tail.ptr)) {
         case queue::advance_head_res_t::ADVANCED:    continue;
         case queue::advance_head_res_t::QUEUE_EMPTY: return nullptr;
@@ -165,17 +166,20 @@ queue<T>::advance_head_res_t queue<T>::try_advance_head(
   queue::node_t*      head,
   queue::node_t*      tail
 ) {
+  // load the current head's next pointer
   const auto next = head->next.load(std::memory_order_acquire);
   if (next == nullptr || head == tail) {
-    head->try_reclaim_dequeue();
+    // if there is no next node yet or if there is one but the tail pointer does not yet point at,
+    // the queue is determined to be empty
+    head->incr_dequeue_count();
     return queue::advance_head_res_t::QUEUE_EMPTY;
   }
 
   curr.inc_tag();
   if (queue::bounded_cas_loop(this->m_head, curr, marked_ptr_t(next, 0), head)) {
-    head->try_reclaim_dequeue_final(curr.decompose_tag() - NODE_SIZE);
+    head->incr_dequeue_count(curr.decompose_tag() - NODE_SIZE);
   } else {
-    head->try_reclaim_dequeue();
+    head->incr_dequeue_count();
   }
 
   return queue::advance_head_res_t::ADVANCED;
@@ -190,7 +194,7 @@ queue<T>::advance_tail_res_t queue<T>::try_advance_tail(
     auto curr = marked_ptr_t(this->m_tail.load(std::memory_order_relaxed));
 
     if (tail != curr.decompose_ptr()) {
-      tail->try_reclaim_enqueue();
+      tail->incr_enqueue_count();
       return queue::advance_tail_res_t::ADVANCED;
     }
 
@@ -207,9 +211,9 @@ queue<T>::advance_tail_res_t queue<T>::try_advance_tail(
 
       if (res) {
         if (queue::bounded_cas_loop(this->m_tail, curr, marked_ptr_t(node, 1), tail)) {
-          tail->try_reclaim_enqueue_final(curr.decompose_tag() - queue::NODE_SIZE);
+          tail->incr_enqueue_count(curr.decompose_tag() - queue::NODE_SIZE);
         } else {
-          tail->try_reclaim_enqueue();
+          tail->incr_enqueue_count();
         }
 
         return queue::advance_tail_res_t::ADVANCED_AND_INSERTED;
@@ -219,9 +223,9 @@ queue<T>::advance_tail_res_t queue<T>::try_advance_tail(
       }
     } else {
       if (queue::bounded_cas_loop(this->m_tail, curr, marked_ptr_t(next, 1), tail)) {
-        tail->try_reclaim_enqueue_final(curr.decompose_tag() - queue::NODE_SIZE);
+        tail->incr_enqueue_count(curr.decompose_tag() - queue::NODE_SIZE);
       } else {
-        tail->try_reclaim_enqueue();
+        tail->incr_enqueue_count();
       }
 
       return queue::advance_tail_res_t::ADVANCED;
