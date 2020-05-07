@@ -19,7 +19,7 @@ queue<T>::queue() {
 
 template <typename T>
 void queue<T>::enqueue(queue::pointer elem) {
-  // validate `elem` argument
+  // validate `elem` argument (must not be null and aligned so it can store 2 bits)
   if (elem == nullptr) {
     throw std::invalid_argument("`elem` must not be nullptr");
   } else if (reinterpret_cast<std::uint64_t>(elem) & node_t::slot_consts_t::STATE_MASK != 0) {
@@ -136,12 +136,17 @@ bool queue<T>::bounded_cas_loop(
   queue::marked_ptr_t         desired,
   queue::node_t*              old_node
 ) {
+  // this loop attempts to exchange the expected (pointer, tag) pair with the desired pair,
+  // the expected value is updated after each unsuccessful invocation so it always contains the
+  // latest observed index value
   while (!node.compare_exchange_strong(
     expected.as_integer(),
     desired.to_integer(),
     std::memory_order_release,
     std::memory_order_relaxed,
   )) {
+    // the CAS failed but the read pointer value no longer matches the previous value, so another
+    // thread must have updated the pointer
     if (expected.decompose_ptr() != old_node) {
       return false;
     }
@@ -175,10 +180,14 @@ queue<T>::advance_head_res_t queue<T>::try_advance_head(
     return queue::advance_head_res_t::QUEUE_EMPTY;
   }
 
+  // attempt to exchange the current head node (with its last observed index) with the next node
   curr.inc_tag();
   if (queue::bounded_cas_loop(this->m_head, curr, marked_ptr_t(next, 0), head)) {
+    // the current thread succeeded in exchanging the node and is hence the operation that observed
+    // the final index value (count) of a all dequeue operations accessing this node
     head->incr_dequeue_count(curr.decompose_tag() - NODE_SIZE);
   } else {
+    // some other node succeeded in exchanging the head and the operation is also complete
     head->incr_dequeue_count();
   }
 
@@ -191,6 +200,7 @@ queue<T>::advance_tail_res_t queue<T>::try_advance_tail(
   queue::node_t* tail
 ) {
   while (true) {
+    // re-load the tail pointer to check if it has already been advanced
     auto curr = marked_ptr_t(this->m_tail.load(std::memory_order_relaxed));
 
     if (tail != curr.decompose_ptr()) {
@@ -198,9 +208,12 @@ queue<T>::advance_tail_res_t queue<T>::try_advance_tail(
       return queue::advance_tail_res_t::ADVANCED;
     }
 
+    // load the current tail's next pointer to check if another thread has already appended a new
+    // node to the queue but has not yet updated the tail pointer
     auto next = tail->next.load();
 
     if (next == nullptr) {
+      // there is no new node yet, allocate a new one and attempt to append it
       auto node = new node_t(elem);
       const auto res = tail->next.compare_exchange_strong(
         next,
@@ -210,18 +223,26 @@ queue<T>::advance_tail_res_t queue<T>::try_advance_tail(
       );
 
       if (res) {
+        // the CAS succeeded in appending the node after tail and now the tail pointer needs to
+        // be updated
         if (queue::bounded_cas_loop(this->m_tail, curr, marked_ptr_t(node, 1), tail)) {
           tail->incr_enqueue_count(curr.decompose_tag() - queue::NODE_SIZE);
         } else {
           tail->incr_enqueue_count();
         }
 
+        // it doesn't matter which thread succeeded in updating the tail, since all must attempt to
+        // set it to previous tail's next pointer, which was set by this thread and contains `elem`
         return queue::advance_tail_res_t::ADVANCED_AND_INSERTED;
       } else {
+        // the CAS failed so another thread must have succeeded in appending a node, delete the node
+        // allocated by this thread and try again
         delete node;
         continue;
       }
     } else {
+      // there is already a new node after the current tail, so this thread has to help updating the
+      // queue's tail pointer and retry once the tail has been advanced
       if (queue::bounded_cas_loop(this->m_tail, curr, marked_ptr_t(next, 1), tail)) {
         tail->incr_enqueue_count(curr.decompose_tag() - queue::NODE_SIZE);
       } else {
