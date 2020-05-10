@@ -8,26 +8,27 @@ namespace loo {
 namespace detail {
 template <typename T, std::uint8_t N>
 class marked_ptr_t final {
-  static_assert(alignof(T) >= TAG_MASK, "T is insufficiently aligned for N tag bits");
 public:
   using pointer  = T*;
   using tag_type = std::uint64_t;
 
   static constexpr std::uint64_t TAG_BITS = N;
-  static constexpr std::uint64_t TAG_MASK = (1 << TAG_BITS) - 1;
+  static constexpr std::uint64_t TAG_MASK = (1ull << TAG_BITS) - 1;
   static constexpr std::uint64_t PTR_MASK = ~TAG_MASK;
+
+  static_assert(alignof(T) >= TAG_MASK, "T is insufficiently aligned for N tag bits");
 
   struct decomposed_t {
     pointer  ptr;
-    tag_type tag;
+    tag_type idx;
   };
 
   /** constructor (default) */
   marked_ptr_t() = default;
   /** constructor(s) */
   explicit marked_ptr_t(std::uint64_t marked) : m_marked{ marked } {}
-  explicit marked_ptr_t(pointer ptr, tag_type tag) :
-    marked_ptr_t(reinterpret_cast<std::uint64_t>(ptr) | tag) {}
+  explicit marked_ptr_t(pointer ptr, tag_type idx) :
+    marked_ptr_t(reinterpret_cast<std::uint64_t>(ptr) | idx) {}
 
   decomposed_t decompose() const {
     return { this->decompose_ptr(), this->decompose_tag() };
@@ -51,7 +52,7 @@ public:
     return this->m_marked;
   }
 
-  void inc_tag(tag_type add = 1) {
+  void inc_idx(tag_type add = 1) {
     this->m_marked += add;
   }
 

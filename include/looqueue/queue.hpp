@@ -1,12 +1,13 @@
 #ifndef LOO_QUEUE_QUEUE_HPP
 #define LOO_QUEUE_QUEUE_HPP
 
-#define likely(cond)   __builtin_expect ((cond), 1)
-#define unlikely(cond) __builtin_expect ((cond), 0)
+#define likely(cond) __builtin_expect ((cond), 1)
+
+#include "looqueue/queue_fwd.hpp"
 
 #include <stdexcept>
 
-#include <looqueue/queue_fwd.hpp>
+#include "looqueue/detail/node.hpp"
 
 namespace loo {
 template <typename T>
@@ -18,11 +19,21 @@ queue<T>::queue() {
 }
 
 template <typename T>
+queue<T>::~queue() noexcept {
+  auto curr = marked_ptr_t(this->m_head.load(std::memory_order_relaxed)).decompose_ptr();
+  while (curr != nullptr) {
+    auto next = curr->next.load(std::memory_order_relaxed);
+    delete curr;
+    curr = next;
+  }
+}
+
+template <typename T>
 void queue<T>::enqueue(queue::pointer elem) {
   // validate `elem` argument (must not be null and aligned so it can store 2 bits)
   if (elem == nullptr) {
     throw std::invalid_argument("`elem` must not be nullptr");
-  } else if (reinterpret_cast<std::uint64_t>(elem) & node_t::slot_consts_t::STATE_MASK != 0) {
+  } else if ((reinterpret_cast<std::uint64_t>(elem) & node_t::slot_consts_t::STATE_MASK) != 0) {
     throw std::invalid_argument("`elem` must be at least 4-byte aligned");
   }
 
@@ -35,7 +46,7 @@ void queue<T>::enqueue(queue::pointer elem) {
     if (likely(tail.idx < NODE_SIZE)) {
       // ** fast path ** write access to the slot at tail.idx was uniquely reserved
       // write the `elem` bits into the slot (unique access ensures this is done exactly once)
-      const auto state = tail.ptr->slots[idx].fetch_add(
+      const auto state = tail.ptr->slots[tail.idx].fetch_add(
         reinterpret_cast<std::uint64_t>(elem),
         std::memory_order_release
       );
@@ -45,11 +56,11 @@ void queue<T>::enqueue(queue::pointer elem) {
         // no READ bit is set, RESUME may or may not be set - the element was successfully inserted
         // if the RESUME bit is set, the corresponding dequeue operation will act accordingly.
         return;
-      } else if (prev == (node_t::slot_consts_t::READ | node_t::slot_consts_t::RESUME)) {
+      } else if (state == (node_t::slot_consts_t::READ | node_t::slot_consts_t::RESUME)) {
         // both READ and RESUME are set, so this must be the final operation visiting this slot
         // hence the slot must be abandoned (dequeue finished too early) and `try_reclaim` must be
         // resumed
-        tail.ptr->try_reclaim(idx + 1);
+        tail.ptr->try_reclaim(tail.idx + 1);
       }
 
       // only READ bit is set so the slot must be abandoned and both operations must retry on
@@ -69,7 +80,7 @@ void queue<T>::enqueue(queue::pointer elem) {
 }
 
 template <typename T>
-queue<T>::pointer queue<T>::dequeue() {
+typename queue<T>::pointer queue<T>::dequeue() {
   while (true) {
     // load head & tail for subsequent empty check
     auto curr = marked_ptr_t(this->m_tail.load(std::memory_order_relaxed));
@@ -88,7 +99,7 @@ queue<T>::pointer queue<T>::dequeue() {
     if (head.idx < NODE_SIZE) {
       // ** fast path ** read access to the slot at tail.idx was uniquely reserved
       // set the READ bit in the slot (unique access ensures this is done exactly once)
-      const auto state = head.ptr->slots[idx].fetch_add(
+      const auto state = head.ptr->slots[head.idx].fetch_add(
         node_t::slot_consts_t::READ,
         std::memory_order_acquire
       );
@@ -108,8 +119,8 @@ queue<T>::pointer queue<T>::dequeue() {
       // the READ bit before the pointer bits have been set by the corresponding enqueue operation,
       // yet
       if (res != nullptr) {
-        if (state & node_t::slot_consts_t::RESUME != 0) {
-          head.ptr->try_reclaim(idx + 1);
+        if ((state & node_t::slot_consts_t::RESUME) != 0) {
+          head.ptr->try_reclaim(head.idx + 1);
         }
 
         return res;
@@ -143,7 +154,7 @@ bool queue<T>::bounded_cas_loop(
     expected.as_integer(),
     desired.to_integer(),
     std::memory_order_release,
-    std::memory_order_relaxed,
+    std::memory_order_relaxed
   )) {
     // the CAS failed but the read pointer value no longer matches the previous value, so another
     // thread must have updated the pointer
@@ -166,10 +177,10 @@ bool queue<T>::is_empty(
 /********** private methods ***********************************************************************/
 
 template <typename T>
-queue<T>::advance_head_res_t queue<T>::try_advance_head(
-  queue::marked_ptr_t curr,
-  queue::node_t*      head,
-  queue::node_t*      tail
+typename queue<T>::advance_head_res_t queue<T>::try_advance_head(
+  typename queue<T>::marked_ptr_t curr,
+  typename queue<T>::node_t*      head,
+  typename queue<T>::node_t*      tail
 ) {
   // load the current head's next pointer
   const auto next = head->next.load(std::memory_order_acquire);
@@ -181,7 +192,7 @@ queue<T>::advance_head_res_t queue<T>::try_advance_head(
   }
 
   // attempt to exchange the current head node (with its last observed index) with the next node
-  curr.inc_tag();
+  curr.inc_idx();
   if (queue::bounded_cas_loop(this->m_head, curr, marked_ptr_t(next, 0), head)) {
     // the current thread succeeded in exchanging the node and is hence the operation that observed
     // the final index value (count) of a all dequeue operations accessing this node
@@ -195,7 +206,7 @@ queue<T>::advance_head_res_t queue<T>::try_advance_head(
 }
 
 template <typename T>
-queue<T>::advance_tail_res_t queue<T>::try_advance_tail(
+typename queue<T>::advance_tail_res_t queue<T>::try_advance_tail(
   queue::pointer elem,
   queue::node_t* tail
 ) {

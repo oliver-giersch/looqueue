@@ -16,7 +16,7 @@ public:
   /** constructor */
   queue();
   /** destructor */
-  ~queue();
+  ~queue() noexcept;
   /** enqueue (back) */
   void enqueue(pointer elem);
   /** dequeue (front) */
@@ -26,7 +26,7 @@ public:
   queue(const queue&)            = delete;
   queue(queue&&)                 = delete;
   queue& operator=(const queue&) = delete;
-  queue& operator(queue&&)       = delete;
+  queue& operator=(queue&&)       = delete;
 
 private:
   /** the number of slots for storing individual elements in each node */
@@ -35,11 +35,14 @@ private:
    *  allowing for 13 tag bits */
   static constexpr std::size_t TAG_BITS  = 13;
 
-  struct alignas(1 << TAG_BITS) node_t;
+  struct alignas(1ull << TAG_BITS) node_t;
   using marked_ptr_t = typename detail::marked_ptr_t<node_t, TAG_BITS>;
 
   /** returns true if the queue is determined to be empty */
-  static bool is_empty(marked_ptr_t::decomposed_t head, marked_ptr::decomposed_t tail) const;
+  static bool is_empty(
+    typename marked_ptr_t::decomposed_t head,
+    typename marked_ptr_t::decomposed_t tail
+  );
 
   /** loops and attempts to CAS `expected` with `desired` until either the CAS succeeds
    *  or the loaded pointer value (failure case) no longer matches `old_node` */
@@ -47,7 +50,7 @@ private:
     std::atomic<std::uint64_t>& node,
     marked_ptr_t& expected,
     marked_ptr_t desired,
-    node_t* old_node,
+    node_t* old_node
   );
 
   /** result type for `try_advance_head` */

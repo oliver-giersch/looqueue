@@ -18,7 +18,7 @@ struct queue<T>::node_t {
   /** high 16 bit: final observed count of slow-path dequeue ops, low 16 bit: current count */
   std::atomic<std::uint32_t> head_cnt{ 0 };
   /** array of individual slots for storing elements + state bits */
-  slot_array_t               slots{{ 0 }};
+  slot_array_t               slots;
   /** high 16 bit: final observed count of slow-path enqueue ops, low 16 bit: current count */
   std::atomic<std::uint32_t> tail_cnt{ 0 };
   /** pointer to successor node */
@@ -28,6 +28,7 @@ struct queue<T>::node_t {
 
   /** slot flag constants */
   enum slot_consts_t : std::uint64_t {
+    UNINIT     = 0b00ull,
     RESUME     = 0b01ull,
     READ       = 0b10ull,
     STATE_MASK = (READ | RESUME),
@@ -64,10 +65,14 @@ struct queue<T>::node_t {
   }
 
   /** constructor (default) */
-  node_t() = default;
+  node_t() {
+    for (auto& slot : this->slots) {
+      std::atomic_init(&slot, slot_consts_t::UNINIT);
+    }
+  };
 
   /** constructor w/ tentative first element */
-  explicit node_t(pointer first) {
+  explicit node_t(pointer first) : node_t() {
     this->slots[0].store(
       reinterpret_cast<std::uint64_t>(first),
       std::memory_order_relaxed
@@ -77,7 +82,7 @@ struct queue<T>::node_t {
   /** checks if all slots are consumed before attempting reclamation */
   void try_reclaim(const std::uint64_t start_idx) {
     for (auto idx = start_idx; idx < NODE_SIZE; ++idx) {
-      auto& slot = this->slot[idx];
+      auto& slot = this->slots[idx];
       if (!is_consumed(slot.load(std::memory_order_acquire))) {
         if (!is_consumed(slot.fetch_add(slot_consts_t::RESUME, std::memory_order_acquire))) {
           return;
@@ -93,7 +98,7 @@ struct queue<T>::node_t {
     );
 
     // if all 3 bits are set after setting the SLOTS bit, the node can be reclaimed
-    if (state == (reclaim_consts_t::ENQUE | reclaim_consts_t::DEQUE)) {
+    if (flags == (reclaim_consts_t::ENQUE | reclaim_consts_t::DEQUE)) {
       delete this;
     }
   }
@@ -102,11 +107,11 @@ struct queue<T>::node_t {
    * value other than 0 is passed; if both counts are equal, the ENQUE bit is set and the node will
    * be reclaimed, if the other 2 bits have already been set. */
   void incr_enqueue_count(const std::uint64_t final_count = 0) {
-    assert(final_count < std::numeric_limits<std::uint_16t>::max());
-    const auto counts = incr_count(this->tail_cnt, static_cast<std::uint16t>(final_count));
+    assert(final_count < std::numeric_limits<std::uint16_t>::max());
+    const auto counts = incr_count(this->tail_cnt, static_cast<std::uint16_t>(final_count));
 
     this->try_reclaim_after_incr(
-      ccounts,
+      counts,
       reclaim_consts_t::ENQUE,
       reclaim_consts_t::SLOTS | reclaim_consts_t::DEQUE
     );
@@ -116,8 +121,8 @@ struct queue<T>::node_t {
    * value other than 0 is passed; if both counts are equal, the ENQUE bit is set and the node will
    * be reclaimed, if the other 2 bits have already been set. */
   void incr_dequeue_count(const std::uint64_t final_count = 0) {
-    assert(final_count < std::numeric_limits<std::uint_16t>::max());
-    const auto counts = incr_count(this->head_cnt, static_cast<std::uint16t>(final_count));
+    assert(final_count < std::numeric_limits<std::uint16_t>::max());
+    const auto counts = incr_count(this->head_cnt, static_cast<std::uint16_t>(final_count));
 
     this->try_reclaim_after_incr(
       counts,
@@ -145,7 +150,7 @@ private:
       : final_count;
 
     return {
-      1 + (static_cast<std::uint16_t>(mask & counter_consts_t::MASK)),
+      static_cast<std::uint16_t>(1) + (static_cast<std::uint16_t>(mask & counter_consts_t::MASK)),
       final_count
     };
   }
