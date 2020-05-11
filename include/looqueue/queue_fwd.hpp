@@ -7,6 +7,20 @@
 #include "detail/marked_ptr.hpp"
 
 namespace loo {
+namespace detail {
+/** result type for `try_advance_head` */
+enum class advance_head_res_t {
+  QUEUE_EMPTY,
+  ADVANCED,
+};
+
+/** result type for `try_advance_tail` */
+enum class advance_tail_res_t {
+  ADVANCED,
+  ADVANCED_AND_INSERTED,
+};
+}
+
 template <typename T>
 class queue {
   static_assert(sizeof(T*) == 8, "loo::queue is only valid for 64-bit architectures");
@@ -26,9 +40,13 @@ public:
   queue(const queue&)            = delete;
   queue(queue&&)                 = delete;
   queue& operator=(const queue&) = delete;
-  queue& operator=(queue&&)       = delete;
+  queue& operator=(queue&&)      = delete;
 
 private:
+  /** see queue::node_t::slot_consts_t */
+  using slot_t        = std::uint64_t;
+  using atomic_slot_t = std::atomic<slot_t>;
+
   /** the number of slots for storing individual elements in each node */
   static constexpr std::size_t NODE_SIZE = 1024;
   /** the node size results in nodes that are approximately 8192 bytes (plus some extra),
@@ -47,29 +65,17 @@ private:
   /** loops and attempts to CAS `expected` with `desired` until either the CAS succeeds
    *  or the loaded pointer value (failure case) no longer matches `old_node` */
   static bool bounded_cas_loop(
-    std::atomic<std::uint64_t>& node,
-    marked_ptr_t& expected,
-    marked_ptr_t desired,
-    node_t* old_node
+    atomic_slot_t& node,
+    marked_ptr_t&  expected,
+    marked_ptr_t   desired,
+    node_t*        old_node
   );
 
-  /** result type for `try_advance_head` */
-  enum class advance_head_res_t {
-    QUEUE_EMPTY,
-    ADVANCED,
-  };
+  detail::advance_head_res_t try_advance_head(marked_ptr_t curr, node_t* head, node_t* tail);
+  detail::advance_tail_res_t try_advance_tail(pointer elem, node_t* tail);
 
-  /** result type for `try_advance_tail` */
-  enum class advance_tail_res_t {
-    ADVANCED,
-    ADVANCED_AND_INSERTED,
-  };
-
-  advance_head_res_t try_advance_head(marked_ptr_t curr, node_t* head, node_t* tail);
-  advance_tail_res_t try_advance_tail(pointer elem, node_t* tail);
-
-  alignas(CACHE_LINE_ALIGN) std::atomic<std::uint64_t> m_head{ 0 };
-  alignas(CACHE_LINE_ALIGN) std::atomic<std::uint64_t> m_tail{ 0 };
+  alignas(CACHE_LINE_ALIGN) atomic_slot_t m_head{ 0 };
+  alignas(CACHE_LINE_ALIGN) atomic_slot_t m_tail{ 0 };
 };
 }
 

@@ -11,7 +11,8 @@
 namespace loo {
 template <typename T>
 struct queue<T>::node_t {
-  using slot_array_t = std::array<std::atomic<std::uint64_t>, NODE_SIZE>;
+  /** alias for an array of `NODE_SIZE` atomic marked element pointers (64-bit) */
+  using slot_array_t = std::array<queue::atomic_slot_t, queue::NODE_SIZE>;
 
   /** struct members */
 
@@ -30,8 +31,8 @@ struct queue<T>::node_t {
   enum slot_consts_t : std::uint64_t {
     UNINIT     = 0b00ull,
     RESUME     = 0b01ull,
-    READ       = 0b10ull,
-    STATE_MASK = (READ | RESUME),
+    READER     = 0b10ull,
+    STATE_MASK = (READER | RESUME),
     ELEM_MASK  = ~STATE_MASK,
   };
 
@@ -54,14 +55,14 @@ struct queue<T>::node_t {
   };
 
   /** returns true if a slot has been either consumed or abandoned */
-  static constexpr bool is_consumed(const std::uint64_t slot) {
+  static constexpr bool is_consumed(const queue::slot_t slot) {
     if ((slot & slot_consts_t::ELEM_MASK) == 0 ) {
       // there are no pointer (elem) bits set, so no writer has visited the slot yet
       return false;
     }
 
     // no READ bit is set means no reader has visited the slot yet
-    return (slot & slot_consts_t::READ) != 0;
+    return (slot & slot_consts_t::READER) != 0;
   }
 
   /** constructor (default) */
@@ -74,17 +75,22 @@ struct queue<T>::node_t {
   /** constructor w/ tentative first element */
   explicit node_t(pointer first) : node_t() {
     this->slots[0].store(
-      reinterpret_cast<std::uint64_t>(first),
+      reinterpret_cast<queue::slot_t>(first),
       std::memory_order_relaxed
     );
   }
 
   /** checks if all slots are consumed before attempting reclamation */
   void try_reclaim(const std::uint64_t start_idx) {
-    for (auto idx = start_idx; idx < NODE_SIZE; ++idx) {
+    // iterate all slots beginning at `start_idx`
+    for (auto idx = start_idx; idx < queue::NODE_SIZE; ++idx) {
       auto& slot = this->slots[idx];
-      if (!is_consumed(slot.load(std::memory_order_acquire))) {
-        if (!is_consumed(slot.fetch_add(slot_consts_t::RESUME, std::memory_order_acquire))) {
+      if (!is_consumed(slot.load(std::memory_order_relaxed))) {
+        // if the current slot has not already been consumed, set the RESUME bit, check again
+        // and abort the iteration if it has still not been consumed
+        // once the consuming thread(s) eventually arrive they will observe the RESUME bit and
+        // the thread arriving last will resume the procedure from the following slot on
+        if (!is_consumed(slot.fetch_add(slot_consts_t::RESUME, std::memory_order_relaxed))) {
           return;
         }
       }
@@ -104,8 +110,8 @@ struct queue<T>::node_t {
   }
 
   /** atomically increases the current operations count in `tail_cnt` and sets the final count if a
-   * value other than 0 is passed; if both counts are equal, the ENQUE bit is set and the node will
-   * be reclaimed, if the other 2 bits have already been set. */
+   *  value other than 0 is passed; if both counts are equal, the ENQUE bit is set and the node will
+   *  be reclaimed, if the other 2 bits have already been set. */
   void incr_enqueue_count(const std::uint64_t final_count = 0) {
     assert(final_count < std::numeric_limits<std::uint16_t>::max());
     const auto counts = incr_count(this->tail_cnt, static_cast<std::uint16_t>(final_count));
@@ -136,6 +142,8 @@ private:
     std::uint16_t curr_count, final_count;
   };
 
+  /** increases the current count in `counter` and also (atomically) sets the final count, if a
+   *  value other than 0 is passed to this function */
   static counts_t incr_count(
     std::atomic<std::uint32_t>& counter,
     std::uint16_t final_count = 0
@@ -150,11 +158,14 @@ private:
       : final_count;
 
     return {
-      static_cast<std::uint16_t>(1) + (static_cast<std::uint16_t>(mask & counter_consts_t::MASK)),
+      static_cast<std::uint16_t>(1 + (mask & counter_consts_t::MASK)),
       final_count
     };
   }
 
+  /** compares the two counts, sets `flag_bit` in this node's reclaim flags and proceeds to
+   *  de-allocate the node if the reclaim flags before setting the bit were equal to
+   *  `expected_flags` */
   void try_reclaim_after_incr(
     const counts_t     counts,
     const std::uint8_t flag_bit,
