@@ -1,7 +1,11 @@
 #ifndef LOO_QUEUE_QUEUE_HPP
 #define LOO_QUEUE_QUEUE_HPP
 
+#if defined(__GNUC__) || defined(__clang__) || defined(__INTEL_COMPILER)
 #define likely(cond) __builtin_expect ((cond), 1)
+#else
+#define likely(cond) cond
+#endif
 
 #include <stdexcept>
 
