@@ -8,7 +8,8 @@
 
 #include <cstdlib>
 
-#include <looqueue/queue_fwd.hpp>
+#include "looqueue/queue_fwd.hpp"
+#include "looqueue/detail/ordering.hpp"
 
 namespace loo {
 template <typename T>
@@ -95,12 +96,12 @@ struct queue<T>::node_t {
     // iterate all slots beginning at `start_idx`
     for (auto idx = start_idx; idx < queue::NODE_SIZE; ++idx) {
       auto& slot = this->slots[idx];
-      if (!is_consumed(slot.load(std::memory_order_relaxed))) {
+      if (!is_consumed(slot.load(RELAXED))) {
         // if the current slot has not already been consumed, set the RESUME bit, check again
         // and abort the iteration if it has still not been consumed
         // once the consuming thread(s) eventually arrive they will observe the RESUME bit and
         // the thread arriving last will resume the procedure from the following slot on
-        if (!is_consumed(slot.fetch_add(slot_consts_t::RESUME, std::memory_order_relaxed))) {
+        if (!is_consumed(slot.fetch_add(slot_consts_t::RESUME, RELAXED))) {
           return;
         }
       }
@@ -110,7 +111,7 @@ struct queue<T>::node_t {
     // ops must have finished and are no longer accessing the node
     const auto flags = this->reclaim_flags.fetch_add(
       reclaim_consts_t::SLOTS,
-      std::memory_order_acq_rel
+      ACQ_REL
     );
 
     // if all 3 bits are set after setting the SLOTS bit, the node can be reclaimed
@@ -161,7 +162,7 @@ private:
     const auto add = final_count == 0
       ? 1
       : 1 + (static_cast<std::uint32_t>(final_count) << counter_consts_t::SHIFT);
-    const auto mask = counter.fetch_add(add, std::memory_order_relaxed);
+    const auto mask = counter.fetch_add(add, RELAXED);
 
     final_count = final_count == 0
       ? static_cast<std::uint16_t>(mask >> counter_consts_t::SHIFT)
@@ -182,7 +183,7 @@ private:
     const std::uint8_t expected_flags
   ) {
     if (counts.curr_count == counts.final_count) {
-      const auto flags = this->reclaim_flags.fetch_add(flag_bit, std::memory_order_acq_rel);
+      const auto flags = this->reclaim_flags.fetch_add(flag_bit, ACQ_REL);
       if (flags == expected_flags) {
         delete this;
       }

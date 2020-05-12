@@ -11,6 +11,7 @@
 
 #include "looqueue/queue_fwd.hpp"
 #include "looqueue/detail/node.hpp"
+#include "looqueue/detail/ordering.hpp"
 
 namespace loo {
 template <typename T>
@@ -44,7 +45,7 @@ void queue<T>::enqueue(queue::pointer elem) {
   while (true) {
     // increment the enqueue index, retrieve the tail pointer and previous index value
     // see PROOF.md regarding the (im)possibility of overflows
-    const auto curr = marked_ptr_t(this->m_tail.fetch_add(1, std::memory_order_acquire));
+    const auto curr = marked_ptr_t(this->m_tail.fetch_add(1, ACQUIRE));
     const auto tail = curr.decompose();
 
     if (likely(tail.idx < queue::NODE_SIZE)) {
@@ -52,7 +53,7 @@ void queue<T>::enqueue(queue::pointer elem) {
       // write the `elem` bits into the slot (unique access ensures this is done exactly once)
       const auto state = tail.ptr->slots[tail.idx].fetch_add(
         reinterpret_cast<queue::slot_t>(elem),
-        std::memory_order_release
+        RELEASE
       );
 
 
@@ -87,8 +88,8 @@ template <typename T>
 typename queue<T>::pointer queue<T>::dequeue() {
   while (true) {
     // load head & tail for subsequent empty check
-    auto curr = marked_ptr_t(this->m_tail.load(std::memory_order_relaxed));
-    const auto tail = marked_ptr_t(this->m_tail.load(std::memory_order_relaxed)).decompose();
+    auto curr = marked_ptr_t(this->m_tail.load(RELAXED));
+    const auto tail = marked_ptr_t(this->m_tail.load(RELAXED)).decompose();
 
     // check if queue is empty BEFORE incrementing the dequeue index
     if (queue::is_empty(curr.decompose(), tail)) {
@@ -97,7 +98,7 @@ typename queue<T>::pointer queue<T>::dequeue() {
 
     // increment the dequeue index, retrieve the head pointer and previous index value
     // see PROOF.md regarding the (im)possibility of overflows
-    curr = marked_ptr_t(this->m_head.fetch_add(1, std::memory_order_acquire));
+    curr = marked_ptr_t(this->m_head.fetch_add(1, ACQUIRE));
     const auto head = curr.decompose();
 
     if (head.idx < queue::NODE_SIZE) {
@@ -105,7 +106,7 @@ typename queue<T>::pointer queue<T>::dequeue() {
       // set the READ bit in the slot (unique access ensures this is done exactly once)
       const auto state = head.ptr->slots[head.idx].fetch_add(
         node_t::slot_consts_t::READER,
-        std::memory_order_acquire
+        ACQUIRE
       );
 
       // extract the pointer bits from the retrieved value
@@ -157,8 +158,8 @@ bool queue<T>::bounded_cas_loop(
   while (!node.compare_exchange_strong(
     expected.as_integer(),
     desired.to_integer(),
-    std::memory_order_release,
-    std::memory_order_relaxed
+    RELEASE,
+    RELAXED
   )) {
     // the CAS failed but the read pointer value no longer matches the previous value, so another
     // thread must have updated the pointer
@@ -187,7 +188,7 @@ detail::advance_head_res_t queue<T>::try_advance_head(
   queue::node_t*      tail
 ) {
   // load the current head's next pointer
-  const auto next = head->next.load(std::memory_order_acquire);
+  const auto next = head->next.load(ACQUIRE);
   if (next == nullptr || head == tail) {
     // if there is no next node yet or if there is one but the tail pointer does not yet point at,
     // the queue is determined to be empty
@@ -216,7 +217,7 @@ detail::advance_tail_res_t queue<T>::try_advance_tail(
 ) {
   while (true) {
     // re-load the tail pointer to check if it has already been advanced
-    auto curr = marked_ptr_t(this->m_tail.load(std::memory_order_relaxed));
+    auto curr = marked_ptr_t(this->m_tail.load(RELAXED));
 
     if (tail != curr.decompose_ptr()) {
       tail->incr_enqueue_count();
@@ -233,8 +234,8 @@ detail::advance_tail_res_t queue<T>::try_advance_tail(
       const auto res = tail->next.compare_exchange_strong(
         next,
         node,
-        std::memory_order_release,
-        std::memory_order_relaxed
+        RELEASE,
+        RELAXED
       );
 
       if (res) {
