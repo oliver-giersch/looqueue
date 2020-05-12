@@ -6,6 +6,8 @@
 #include <cassert>
 #include <limits>
 
+#include <cstdlib>
+
 #include <looqueue/queue_fwd.hpp>
 
 namespace loo {
@@ -63,6 +65,14 @@ struct queue<T>::node_t {
 
     // no READ bit is set means no reader has visited the slot yet
     return (slot & slot_consts_t::READER) != 0;
+  }
+
+  void* operator new(std::size_t size) {
+    return std::aligned_alloc(size, queue::NODE_ALIGN);
+  }
+
+  void operator delete(void* ptr) {
+    free(ptr);
   }
 
   /** constructor (default) */

@@ -8,13 +8,13 @@
 
 namespace loo {
 namespace detail {
-/** result type for `try_advance_head` */
+/** result type for private `try_advance_head` method */
 enum class advance_head_res_t {
   QUEUE_EMPTY,
   ADVANCED,
 };
 
-/** result type for `try_advance_tail` */
+/** result type for private `try_advance_tail` method */
 enum class advance_tail_res_t {
   ADVANCED,
   ADVANCED_AND_INSERTED,
@@ -24,7 +24,18 @@ enum class advance_tail_res_t {
 template <typename T>
 class queue {
   static_assert(sizeof(T*) == 8, "loo::queue is only valid for 64-bit architectures");
+
+  /** the number of slots for storing individual elements in each node */
+  static constexpr std::size_t NODE_SIZE = 1024;
+  /** the base node size is approximately 8192 bytes (plus some extra) and over-aligning them to
+   *  that size results in 13 usable tag bits. */
+  static constexpr std::size_t TAG_BITS  = 13;
+
 public:
+  /** see PROOF.md for the reasoning behind these constants */
+  static constexpr std::size_t MAX_PRODUCER_THREADS = (1 << TAG_BITS) - NODE_SIZE + 1;
+  static constexpr std::size_t MAX_CONSUMER_THREADS = (1 << TAG_BITS) - NODE_SIZE + 1) / 2;
+
   using pointer = T*;
 
   /** constructor */
@@ -43,17 +54,13 @@ public:
   queue& operator=(queue&&)      = delete;
 
 private:
+  static constexpr std::size_t NODE_ALIGN = 1ull << TAG_BITS;
+
   /** see queue::node_t::slot_consts_t */
   using slot_t        = std::uint64_t;
   using atomic_slot_t = std::atomic<slot_t>;
 
-  /** the number of slots for storing individual elements in each node */
-  static constexpr std::size_t NODE_SIZE = 1024;
-  /** the node size results in nodes that are approximately 8192 bytes (plus some extra),
-   *  allowing for 13 tag bits */
-  static constexpr std::size_t TAG_BITS  = 13;
-
-  struct alignas(1ull << TAG_BITS) node_t;
+  struct node_t;
   using marked_ptr_t = typename detail::marked_ptr_t<node_t, TAG_BITS>;
 
   /** returns true if the queue is determined to be empty */
@@ -71,7 +78,10 @@ private:
     node_t*        old_node
   );
 
+  /** attempts to advance the head node to its successor if there is one */
   detail::advance_head_res_t try_advance_head(marked_ptr_t curr, node_t* head, node_t* tail);
+  /** attempts to advance the tail node to its successor if there is one or attempts to append a
+   *  new node with `elem` stored in the first slot otherwise */
   detail::advance_tail_res_t try_advance_tail(pointer elem, node_t* tail);
 
   alignas(CACHE_LINE_ALIGN) atomic_slot_t m_head{ 0 };
