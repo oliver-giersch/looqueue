@@ -3,7 +3,7 @@
 
 #include <atomic>
 
-#include "detail/align.hpp"
+#include "align.hpp"
 #include "detail/marked_ptr.hpp"
 
 namespace loo {
@@ -33,8 +33,8 @@ class queue {
 
 public:
   /** see PROOF.md for the reasoning behind these constants */
-  static constexpr std::size_t MAX_PRODUCER_THREADS = (1 << TAG_BITS) - NODE_SIZE + 1;
-  static constexpr std::size_t MAX_CONSUMER_THREADS = (1 << TAG_BITS) - NODE_SIZE + 1) / 2;
+  static constexpr std::size_t MAX_PRODUCER_THREADS = (1ull << TAG_BITS) - NODE_SIZE + 1;
+  static constexpr std::size_t MAX_CONSUMER_THREADS = ((1ull << TAG_BITS) - NODE_SIZE + 1) / 2;
 
   using pointer = T*;
 

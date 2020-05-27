@@ -16,8 +16,6 @@ public:
   static constexpr std::uint64_t TAG_MASK = (1ull << TAG_BITS) - 1;
   static constexpr std::uint64_t PTR_MASK = ~TAG_MASK;
 
-  static_assert(alignof(T) >= TAG_MASK, "T is insufficiently aligned for N tag bits");
-
   struct decomposed_t {
     pointer  ptr;
     tag_type idx;

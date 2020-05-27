@@ -1,5 +1,5 @@
-#ifndef LOO_QUEUE_DETAIL_ALIGN_HPP
-#define LOO_QUEUE_DETAIL_ALIGN_HPP
+#ifndef LOO_QUEUE_ALIGN_HPP
+#define LOO_QUEUE_ALIGN_HPP
 
 #include <cstdint>
 
@@ -12,5 +12,6 @@
 #endif
 
 constexpr std::size_t CACHE_LINE_ALIGN = DESTRUCTIVE_INFERENCE_SIZE;
+constexpr std::size_t CACHE_LINE_SIZE  = 64;
 
-#endif /* LOO_QUEUE_DETAIL_ALIGN_HPP */
+#endif /* LOO_QUEUE_ALIGN_HPP */
