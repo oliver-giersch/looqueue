@@ -1,5 +1,0 @@
-[submodule "benchmark/lib/rpmalloc"]
-	path = benchmark/lib/rpmalloc
-	url = https://github.com/mjansson/rpmalloc.git
-	branch = master
-	commit = 75e19cc
