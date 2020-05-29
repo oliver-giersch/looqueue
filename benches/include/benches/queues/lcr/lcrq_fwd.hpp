@@ -6,9 +6,11 @@
 
 #include <cstdint>
 
+#include "looqueue/align.hpp"
+
 namespace lcr {
 template <typename T>
-/** LCRQ */
+/** implementation of LCRQueue by Morrison/Afek using hazard pointers */
 class queue {
 public:
   using pointer = T*;
@@ -27,31 +29,24 @@ private:
 
   using cell_pair_t = typename std::pair<std::uint64_t, pointer>;
 
-  struct alignas(64) cell_t;
+  struct alignas(CACHE_LINE_SIZE) cell_t;
   struct crq_node_t;
   struct decomposed_t;
 
-  alignas(128) std::atomic<crq_node_t*> m_head;
-  alignas(128) std::atomic<crq_node_t*> m_tail;
+  alignas(CACHE_LINE_ALIGN) std::atomic<crq_node_t*> m_head;
+  alignas(CACHE_LINE_ALIGN) std::atomic<crq_node_t*> m_tail;
 };
 
-/** thread-local reference to an LCRQ instance */
+/** thread-local reference to an LCRQueue instance */
 template <typename T>
 class queue_ref {
 public:
   using pointer = typename queue<T>::pointer;
 
-  explicit queue_ref(queue<T>& queue, std::size_t thread_id) noexcept :
-    m_queue(queue), m_thread_id(thread_id) {}
-  ~queue_ref() noexcept = delete;
+  explicit queue_ref(queue<T>& queue, std::size_t thread_id) noexcept;
 
-  void enqueue(pointer elem) {
-    this->m_queue.enqueue(elem, this->m_thread_id);
-  }
-
-  pointer dequeue() {
-    this->m_queue.dequeue(this->m_thread_id);
-  }
+  void enqueue(pointer elem);
+  pointer dequeue();
 
   queue_ref(const queue_ref&)                     = default;
   queue_ref(queue_ref&&) noexcept                 = default;

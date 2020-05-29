@@ -17,9 +17,9 @@ namespace loo {
 template <typename T>
 queue<T>::queue() {
   // initially head and tail point at the same node
-  auto head = new node_t();
-  this->m_head.store(reinterpret_cast<queue::slot_t>(head), std::memory_order_relaxed);
-  this->m_tail.store(reinterpret_cast<queue::slot_t>(head), std::memory_order_relaxed);
+  auto head = reinterpret_cast<queue::slot_t>(new node_t());
+  std::atomic_init(&this->m_head, head);
+  std::atomic_init(&this->m_tail, head);
 }
 
 template <typename T>
