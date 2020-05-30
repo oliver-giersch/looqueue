@@ -75,6 +75,15 @@ typename hazard_pointers<T>::pointer hazard_pointers<T>::protect_ptr(
 ) {
   auto& hazard_pointer = this->m_thread_blocks.at(thread_id).hazard_pointers.at(hp);
   hazard_pointer.store(ptr);
+  return ptr;
+}
+
+template <typename T>
+void hazard_pointers<T>::retire(
+    hazard_pointers::pointer ptr,
+    const std::size_t thread_id
+) {
+  throw std::runtime_error("not yet implemented");
 }
 }
 

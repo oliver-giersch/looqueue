@@ -35,6 +35,12 @@ struct alignas(64) queue<T>::cell_t {
   }
 };
 
+/** queue::decomposed_t definition */
+template <typename T>
+struct queue<T>::decomposed_t {
+  std::uint64_t status_bit, idx;
+};
+
 /** queue::crq_node_t definition */
 template <typename T>
 struct queue<T>::crq_node_t {
@@ -42,6 +48,14 @@ struct queue<T>::crq_node_t {
   alignas(CACHE_LINE_SIZE) std::atomic<std::uint64_t>    tail_ticket{};
   alignas(CACHE_LINE_SIZE) std::atomic<crq_node_t*>      next;
   alignas(CACHE_LINE_SIZE) std::array<cell_t, RING_SIZE> cells;
+
+  static constexpr std::uint64_t decompose_idx_value(const std::uint64_t idx) {
+    return idx & INDEX_MASK;
+  }
+
+  static constexpr queue::decomposed_t decompose_idx(std::uint64_t idx) {
+    return { (idx & STATUS_BIT), decompose_idx_value(idx) };
+  }
 
   crq_node_t();
   explicit crq_node_t(pointer first);
@@ -78,7 +92,7 @@ template <typename T>
 bool queue<T>::crq_node_t::enqueue(queue::pointer elem) {
   auto attempts = 0;
   while (true) {
-    const auto decomposed_tail = decompose_index(this->tail_ticket.fetch_add(1));
+    const auto decomposed_tail = decompose_idx(this->tail_ticket.fetch_add(1));
     if (decomposed_tail.status_bit == STATUS_BIT) {
       return false;
     }
@@ -87,7 +101,7 @@ bool queue<T>::crq_node_t::enqueue(queue::pointer elem) {
     auto val = cell.val.load();
 
     const auto composed_idx = cell.idx.load();
-    const auto decomposed_idx = decompose_index(composed_idx);
+    const auto decomposed_idx = decompose_idx(composed_idx);
     const auto safe_bit = decomposed_idx.status_bit;
     const auto idx = decomposed_idx.idx;
 
@@ -100,7 +114,7 @@ bool queue<T>::crq_node_t::enqueue(queue::pointer elem) {
           )
       ) {
         const cell_pair_t desired = { (STATUS_BIT | decomposed_tail.idx), elem };
-        if (cell.dw_cas({ composed_idx, nullptr }, desired)) {
+        if (cell.cmpxchg16b({ composed_idx, nullptr }, desired)) {
           return true;
         }
       }
@@ -126,8 +140,8 @@ typename queue<T>::pointer queue<T>::crq_node_t::dequeue() {
       auto val = cell.val.load();
       const auto composed_idx = cell.idx.load();
 
-      const auto decomp_idx = decompose_index(composed_idx);
-      const auto safe_bit = decomp_idx.first;
+      const auto decomp_idx = decompose_idx(composed_idx);
+      const auto safe_bit = decomp_idx.status_bit;
       const auto idx = decomp_idx.idx;
 
       if (idx > head) {
@@ -139,25 +153,25 @@ typename queue<T>::pointer queue<T>::crq_node_t::dequeue() {
           const cell_pair_t expected = { safe_bit | head, val };
           const cell_pair_t desired  = { safe_bit | (head + RING_SIZE), nullptr };
 
-          if (cell.double_cas(expected, desired)) {
+          if (cell.cmpxchg16b(expected, desired)) {
             return val;
           }
         } else {
           // marks cell as unsafe to prevent further enqueues
-          if (cell.double_cas({ composed_idx, val }, { idx, val })) {
+          if (cell.cmpxchg16b({ composed_idx, val }, { idx, val })) {
             break;
           }
         }
       } else {
         // attempt empty transition
         const cell_pair_t expected = { (safe_bit | (head + RING_SIZE)), nullptr };
-        if (cell.double_cas({ composed_idx, nullptr }, expected)) {
+        if (cell.cmpxchg16b({ composed_idx, nullptr }, expected)) {
           break;
         }
       }
     }
 
-    const auto tail = decompose_index_value(this->tail_ticket.load());
+    const auto tail = decompose_idx_value(this->tail_ticket.load());
     if (tail <= head + 1) {
       this->fix_state();
       return nullptr;

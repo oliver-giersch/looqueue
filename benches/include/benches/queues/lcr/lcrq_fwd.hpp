@@ -12,7 +12,7 @@
 
 namespace lcr {
 template <typename T>
-/** implementation of LCRQueue by Morrison/Afek using hazard pointers */
+/** implementation of LCRQ(ueue) by Morrison/Afek using hazard pointers */
 class queue {
 public:
   using pointer = T*;
@@ -47,10 +47,10 @@ private:
 
   alignas(CACHE_LINE_ALIGN) std::atomic<crq_node_t*> m_head;
   alignas(CACHE_LINE_ALIGN) std::atomic<crq_node_t*> m_tail;
-  memory::hazard_pointers<T> m_hazard_pointers;
+  memory::hazard_pointers<crq_node_t> m_hazard_pointers;
 };
 
-/** thread-local reference to an LCRQueue instance */
+/** thread-local reference to an LCRQ instance */
 template <typename T>
 class queue_ref {
 public:
