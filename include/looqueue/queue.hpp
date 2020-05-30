@@ -1,7 +1,7 @@
 #ifndef LOO_QUEUE_QUEUE_HPP
 #define LOO_QUEUE_QUEUE_HPP
 
-#if defined(__GNUC__) || defined(__clang__) || defined(__INTEL_COMPILER)
+#if defined(__GNUG__) || defined(__clang__) || defined(__INTEL_COMPILER)
 #define likely(cond) __builtin_expect ((cond), 1)
 #else
 #define likely(cond) cond
@@ -24,7 +24,7 @@ queue<T>::queue() {
 
 template <typename T>
 queue<T>::~queue() noexcept {
-  // de-allocate all nodes in the queue
+  // de-allocate all remaining nodes in the queue
   auto curr = marked_ptr_t(this->m_head.load(std::memory_order_relaxed)).decompose_ptr();
   while (curr != nullptr) {
     auto next = curr->next.load(std::memory_order_relaxed);
@@ -219,6 +219,8 @@ detail::advance_tail_res_t queue<T>::try_advance_tail(
     // re-load the tail pointer to check if it has already been advanced
     auto curr = marked_ptr_t(this->m_tail.load(RELAXED));
 
+    // another thread has already advanced the tail pointer, so this thread can retry and will
+    // likely enter the fast-path
     if (tail != curr.decompose_ptr()) {
       tail->incr_enqueue_count();
       return detail::advance_tail_res_t::ADVANCED;
@@ -239,8 +241,7 @@ detail::advance_tail_res_t queue<T>::try_advance_tail(
       );
 
       if (res) {
-        // the CAS succeeded in appending the node after tail and now the tail pointer needs to
-        // be updated
+        // the CAS succeeded in appending the node after the tail, now the tail has to be updated
         if (queue::bounded_cas_loop(this->m_tail, curr, marked_ptr_t(node, 1), tail)) {
           tail->incr_enqueue_count(curr.decompose_tag() - queue::NODE_SIZE);
         } else {

@@ -69,7 +69,7 @@ struct queue<T>::node_t {
   }
 
   void* operator new(std::size_t size) {
-    return aligned_alloc(size, queue::NODE_ALIGN);
+    return aligned_alloc(queue::NODE_ALIGN, size);
   }
 
   void operator delete(void* ptr) {
