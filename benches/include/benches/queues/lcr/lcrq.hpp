@@ -49,7 +49,7 @@ void queue<T>::enqueue(queue::pointer elem, const std::size_t thread_id) {
     }
 
     if (tail->enqueue(elem)) {
-      this->m_hazard_pointers.clear_one(HP_ENQ_TAIL, thread_id);
+      this->m_hazard_pointers.clear_one(thread_id, HP_ENQ_TAIL);
       return;
     }
 
@@ -57,7 +57,7 @@ void queue<T>::enqueue(queue::pointer elem, const std::size_t thread_id) {
 
     if (tail->cas_next(nullptr, crq)) {
       this->m_tail.compare_exchange_strong(tail, crq);
-      this->m_hazard_pointers.clear_one(HP_ENQ_TAIL, thread_id);
+      this->m_hazard_pointers.clear_one(thread_id, HP_ENQ_TAIL);
       return;
     } else {
       delete crq;
@@ -67,7 +67,7 @@ void queue<T>::enqueue(queue::pointer elem, const std::size_t thread_id) {
 
 template <typename T>
 typename queue<T>::pointer queue<T>::dequeue(const std::size_t thread_id) {
-  pointer res = nullptr;
+  pointer res;
   while (true) {
     auto head = this->m_hazard_pointers.protect_ptr(
         this->m_head.load(),
@@ -104,20 +104,6 @@ typename queue<T>::pointer queue<T>::dequeue(const std::size_t thread_id) {
 
   this->m_hazard_pointers.clear_one(thread_id, HP_DEQ_HEAD);
   return res;
-}
-
-template <typename T>
-queue_ref<T>::queue_ref(queue<T>& queue, const std::size_t thread_id) noexcept :
-  m_queue(queue), m_thread_id(thread_id) {}
-
-template <typename T>
-void queue_ref<T>::enqueue(queue_ref::pointer elem) {
-  this->m_queue.enqueue(elem, this->m_thread_id);
-}
-
-template <typename T>
-typename queue<T>::pointer queue_ref<T>::dequeue() {
-  return this->m_queue.dequeue(this->m_thread_id);
 }
 }
 

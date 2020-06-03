@@ -12,6 +12,8 @@
 
 #include "benches/common.hpp"
 #include "benches/queues/lcr/lcrq.hpp"
+#include "benches/queues/msc/michael_scott.hpp"
+#include "benches/queues/queue_ref.hpp"
 
 #include "looqueue/queue.hpp"
 
@@ -25,8 +27,10 @@ constexpr std::array<std::size_t, 15> THREADS{ 1, 2, 4, 8, 12, 16, 20, 24, 32, 4
 /********** queue aliases *****************************************************/
 
 using lcr_queue     = lcr::queue<std::size_t>;
-using lcr_queue_ref = lcr::queue_ref<std::size_t>;
+using lcr_queue_ref = queue_ref<lcr_queue>;
 using loo_queue     = loo::queue<std::size_t>;
+using msc_queue     = msc::queue<std::size_t>;
+using msc_queue_ref = queue_ref<msc_queue>;
 
 /********** function pointer aliases ******************************************/
 
@@ -69,7 +73,7 @@ int main(int argc, char* argv[3]) {
         bench,
         queue_name,
         [](auto& queue, auto thread_id) -> auto {
-          return lcr::queue_ref<std::size_t>(queue, thread_id);
+          return lcr_queue_ref(queue, thread_id);
         }
       );
       break;
@@ -83,6 +87,13 @@ int main(int argc, char* argv[3]) {
     case bench::queue_type_t::FAA:
       break;
     case bench::queue_type_t::MSC:
+      run_benches<msc_queue, msc_queue_ref>(
+          bench,
+          queue_name,
+          [](auto& queue, auto thread_id) -> auto {
+            return msc_queue_ref(queue, thread_id);
+          }
+      );
       break;
   }
 }

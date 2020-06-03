@@ -19,7 +19,6 @@ public:
 
   explicit queue(std::size_t max_threads = MAX_THREADS);
   ~queue() noexcept;
-
   void enqueue(pointer elem, std::size_t thread_id);
   pointer dequeue(std::size_t thread_id);
 
@@ -47,28 +46,8 @@ private:
 
   alignas(CACHE_LINE_ALIGN) std::atomic<crq_node_t*> m_head;
   alignas(CACHE_LINE_ALIGN) std::atomic<crq_node_t*> m_tail;
+
   memory::hazard_pointers<crq_node_t> m_hazard_pointers;
-};
-
-/** thread-local reference to an LCRQ instance */
-template <typename T>
-class queue_ref {
-public:
-  using pointer = typename queue<T>::pointer;
-
-  explicit queue_ref(queue<T>& queue, std::size_t thread_id) noexcept;
-
-  void enqueue(pointer elem);
-  pointer dequeue();
-
-  queue_ref(const queue_ref&)                     = default;
-  queue_ref(queue_ref&&) noexcept                 = default;
-  queue_ref& operator=(const queue_ref&) noexcept = default;
-  queue_ref& operator=(queue_ref&&) noexcept      = default;
-
-private:
-  queue<T>& m_queue;
-  std::size_t m_thread_id;
 };
 }
 
