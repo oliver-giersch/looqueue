@@ -12,7 +12,7 @@
 
 namespace lcr {
 template <typename T>
-/** implementation of LCRQ(ueue) by Morrison/Afek using hazard pointers */
+/** implementation of LCRQ(ueue) by Morrison/Afek */
 class queue {
 public:
   using pointer = T*;

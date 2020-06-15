@@ -11,6 +11,7 @@
 #include "boost/thread/barrier.hpp"
 
 #include "benches/common.hpp"
+#include "benches/queues/faa/faa_array.hpp"
 #include "benches/queues/lcr/lcrq.hpp"
 #include "benches/queues/msc/michael_scott.hpp"
 #include "benches/queues/queue_ref.hpp"
@@ -26,9 +27,12 @@ constexpr std::array<std::size_t, 15> THREADS{ 1, 2, 4, 8, 12, 16, 20, 24, 32, 4
 
 /********** queue aliases *****************************************************/
 
+using loo_queue     = loo::queue<std::size_t>;
+
+using faa_queue     = faa::queue<std::size_t>;
+using faa_queue_ref = queue_ref<faa_queue>;
 using lcr_queue     = lcr::queue<std::size_t>;
 using lcr_queue_ref = queue_ref<lcr_queue>;
-using loo_queue     = loo::queue<std::size_t>;
 using msc_queue     = msc::queue<std::size_t>;
 using msc_queue_ref = queue_ref<msc_queue>;
 
@@ -164,7 +168,7 @@ void bench_pairwise(
               && (elem < &thread_ids.front() || elem > &thread_ids.back())
           ) {
             throw std::runtime_error(
-                "invalid element retrieved (detected undefined behaviour"
+                "invalid element retrieved (detected undefined behaviour)"
             );
           }
         }
