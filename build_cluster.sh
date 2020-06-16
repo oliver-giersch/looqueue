@@ -5,8 +5,6 @@ module load boost/1.72.0
 module load llvm
 module load cmake
 
-mkdir out
-
 rm -r cmake-build-remote-release
 mkdir cmake-build-remote-release
 
