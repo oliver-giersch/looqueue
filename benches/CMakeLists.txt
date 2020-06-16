@@ -1,4 +1,3 @@
-set(USE_SEQ_CST ON)
 add_subdirectory(lib)
 
 find_package(Threads REQUIRED)

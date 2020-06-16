@@ -3,7 +3,6 @@ project(rpmalloc C)
 
 # required for C11 atomics
 set(CMAKE_C_STANDARD 11)
-set(CMAKE_C_EXTENSIONS OFF)
 
 add_library(rpmalloc STATIC rpmalloc/rpmalloc/rpmalloc.c)
 target_include_directories(rpmalloc PUBLIC rpmalloc/rpmalloc)
