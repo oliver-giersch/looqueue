@@ -39,21 +39,34 @@ using msc_queue_ref = queue_ref<msc_queue>;
 /********** function pointer aliases ******************************************/
 
 template <typename Q, typename R>
-using create_queue_ref_fn = std::function<R(Q&, std::size_t)>;
+using make_queue_ref_fn = std::function<R(Q&, std::size_t)>;
+
+/********** helper structs ****************************************************/
+
+struct burst_measurements_t {
+  nanosecs enq, deq;
+};
 
 /** runs all bench iterations for the specified bench and queue */
 template <typename Q, typename R>
 void run_benches(
     const std::string& bench,
     const std::string& queue_name,
-    create_queue_ref_fn<Q, R> create_queue_ref
+    make_queue_ref_fn<Q, R> make_queue_ref
 );
 
 template <typename Q, typename R>
 void bench_pairwise(
     std::size_t threads,
     const std::string& queue_name,
-    create_queue_ref_fn<Q, R> create_queue_ref
+    make_queue_ref_fn<Q, R> make_queue_ref
+);
+
+template <typename Q, typename R>
+void bench_bursts(
+    std::size_t threads,
+    const std::string& queue_name,
+    make_queue_ref_fn<Q, R> make_queue_ref
 );
 
 int main(int argc, char* argv[3]) {
@@ -106,7 +119,7 @@ template <typename Q, typename R>
 void run_benches(
     const std::string& bench,
     const std::string& queue_name,
-    create_queue_ref_fn<Q, R> create_queue_ref
+    make_queue_ref_fn<Q, R> make_queue_ref
 ) {
   for (auto threads : THREADS) {
     // aborts if hyper-threads would be used (assuming 2 HT per core)
@@ -115,9 +128,9 @@ void run_benches(
     }
 
     if (bench == "pairs") {
-      bench_pairwise<Q, R>(threads, queue_name, create_queue_ref);
+      bench_pairwise<Q, R>(threads, queue_name, make_queue_ref);
     } else if (bench == "bursts") {
-      throw std::runtime_error("not implemented yet");
+      bench_bursts<Q, R>(threads, queue_name, make_queue_ref);
     }
   }
 }
@@ -126,7 +139,7 @@ template <typename Q, typename R>
 void bench_pairwise(
     const std::size_t threads,
     const std::string& queue_name,
-    create_queue_ref_fn<Q, R> create_queue_ref
+    make_queue_ref_fn<Q, R> make_queue_ref
 ) {
   const auto ops_per_threads = TOTAL_OPS / threads;
 
@@ -152,12 +165,12 @@ void bench_pairwise(
     // spawns threads and performs pairwise enqueue and dequeue operations
     for (std::size_t thread = 0; thread < threads; ++thread) {
       thread_handles.emplace_back(std::thread([&, thread] {
-        //bench::pin_current_thread(thread);
+        bench::pin_current_thread(thread);
+
+        auto&& queue_ref = make_queue_ref(*queue, thread);
 
         // all threads synchronize at this barrier before starting
         barrier.wait();
-
-        auto&& queue_ref = create_queue_ref(*queue, thread);
 
         for (std::size_t op = 0; op < ops_per_threads; ++op) {
           queue_ref.enqueue(&thread_ids.at(thread));
@@ -200,3 +213,96 @@ void bench_pairwise(
       << "," << TOTAL_OPS << std::endl;
   }
 }
+
+template <typename Q, typename R>
+void bench_bursts(
+    const std::size_t threads,
+    const std::string& queue_name,
+    make_queue_ref_fn<Q, R> make_queue_ref
+) {
+  const auto ops_per_threads = TOTAL_OPS / threads;
+
+  // pre-allocates a vector for storing the elements enqueued by each thread;
+  std::vector<std::size_t> thread_ids{};
+  thread_ids.reserve(threads);
+  for (std::size_t thread = 0; thread < threads; ++thread) {
+    thread_ids.push_back(thread);
+  }
+
+  // pre-allocates a vector for storing each run's measurements
+  std::vector<burst_measurements_t> measurements{};
+  measurements.reserve(RUNS);
+
+  for (std::size_t run = 0; run < RUNS; ++run) {
+    auto queue = std::make_unique<Q>();
+    boost::barrier barrier{ static_cast<unsigned>(threads + 1) };
+
+    // pre-allocates a vector for storing each thread's join handle
+    std::vector<std::thread> thread_handles{};
+    thread_handles.reserve(threads);
+
+    // spawns threads and performs pairwise enqueue and dequeue operations
+    for (std::size_t thread = 0; thread < threads; ++thread) {
+      thread_handles.emplace_back(std::thread([&, thread] {
+        bench::pin_current_thread(thread);
+
+        auto&& queue_ref = make_queue_ref(*queue, thread);
+
+        // (1) all threads synchronize at this barrier before starting
+        barrier.wait();
+
+        for (std::size_t op = 0; op < ops_per_threads; ++op) {
+          queue_ref.enqueue(&thread_ids.at(thread));
+        }
+
+        // (2) all threads synchronize at this barrier after completing their
+        // enqueue burst
+        barrier.wait();
+
+        for (std::size_t op = 0; op < ops_per_threads; ++op) {
+          auto elem = queue_ref.dequeue();
+          if (
+              elem != nullptr
+              && (elem < &thread_ids.front() || elem > &thread_ids.back())
+          ) {
+            throw std::runtime_error(
+                "invalid element retrieved (detected undefined behaviour)"
+            );
+          }
+        }
+
+        // (3) all threads synchronize at this barrier before completing
+        barrier.wait();
+      }));
+    }
+
+    // (1)
+    barrier.wait();
+    // measures total time of enqueue burst once all threads have arrived at the
+    // barrier
+    const auto enq_start = std::chrono::high_resolution_clock::now();
+    // (2)
+    barrier.wait();
+    const auto enq_stop = std::chrono::high_resolution_clock::now();
+    // (3)
+    barrier.wait();
+    const auto deq_stop = std::chrono::high_resolution_clock::now();
+    measurements.push_back({ enq_stop - enq_start, deq_stop - enq_stop });
+
+    // joins all threads
+    for (auto& handle : thread_handles) {
+      handle.join();
+    }
+  }
+
+  // print all measurements to stdout
+  for (const auto measurement : measurements) {
+    std::cout
+        << queue_name
+        << "," << threads
+        << "," << measurement.enq.count()
+        << "," << measurement.deq.count()
+        << "," << TOTAL_OPS << std::endl;
+  }
+}
+

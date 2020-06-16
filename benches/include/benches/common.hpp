@@ -21,7 +21,10 @@ constexpr const char* display_str(queue_type_t queue) {
   }
 }
 
+/** parses the given string to the corresponding queue type */
 queue_type_t parse_queue_str(const std::string& queue);
+/** pins the thread with the given id to the core with the same number */
+void pin_current_thread(std::size_t thread_id);
 }
 
 #endif /* LOO_QUEUE_BENCHES_COMMON_HPP */
