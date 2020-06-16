@@ -1,9 +1,9 @@
 #!/bin/sh
 
-module load cmake
-module load gcc/9.3.0
-module load llvm/9.0.0
+module load gcc/9.2.0
 module load boost/1.72.0
+module load llvm
+module load cmake
 
 mkdir out
 

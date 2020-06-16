@@ -1,3 +1,5 @@
+set(CMAKE_CXX_STANDARD 14)
+
 set(USE_SEQ_CST ON)
 add_subdirectory(lib)
 
