@@ -102,6 +102,13 @@ int main(int argc, char* argv[3]) {
       );
       break;
     case bench::queue_type_t::FAA:
+      run_benches<faa_queue, faa_queue_ref>(
+          bench,
+          queue_name,
+          [](auto& queue, auto thread_id) -> auto {
+            return faa_queue_ref(queue, thread_id);
+          }
+      );
       break;
     case bench::queue_type_t::MSC:
       run_benches<msc_queue, msc_queue_ref>(
@@ -229,10 +236,6 @@ void bench_bursts(
     thread_ids.push_back(thread);
   }
 
-  // pre-allocates a vector for storing each run's measurements
-  std::vector<burst_measurements_t> measurements{};
-  measurements.reserve(RUNS);
-
   for (std::size_t run = 0; run < RUNS; ++run) {
     auto queue = std::make_unique<Q>();
     boost::barrier barrier{ static_cast<unsigned>(threads + 1) };
@@ -287,21 +290,21 @@ void bench_bursts(
     // (3)
     barrier.wait();
     const auto deq_stop = std::chrono::high_resolution_clock::now();
-    measurements.push_back({ enq_stop - enq_start, deq_stop - enq_stop });
+
+    const auto enq = enq_stop - enq_start;
+    const auto deq = deq_stop - enq_stop;
 
     // joins all threads
     for (auto& handle : thread_handles) {
       handle.join();
     }
-  }
 
-  // print all measurements to stdout
-  for (const auto measurement : measurements) {
+    // print measurements to stdout
     std::cout
         << queue_name
         << "," << threads
-        << "," << measurement.enq.count()
-        << "," << measurement.deq.count()
+        << "," << enq.count()
+        << "," << deq.count()
         << "," << TOTAL_OPS << std::endl;
   }
 }

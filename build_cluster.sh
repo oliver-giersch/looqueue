@@ -10,7 +10,6 @@ mkdir cmake-build-remote-release
 
 cd cmake-build-remote-release || exit
 cmake -DCMAKE_BUILD_TYPE=Release \
-#     -DCMAKE_VERBOSE_MAKEFILE=ON \
       -DCMAKE_C_COMPILER=icc \
       -DCMAKE_CXX_COMPILER=icpc \
       -G "CodeBlocks - Unix Makefiles" "$(dirname "$(pwd)")"
