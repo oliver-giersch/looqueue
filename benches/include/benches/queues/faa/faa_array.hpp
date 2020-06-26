@@ -4,6 +4,12 @@
 #include "benches/queues/faa/faa_array_fwd.hpp"
 #include "benches/queues/faa/detail/node.hpp"
 
+#if defined(__GNUG__) || defined(__clang__) || defined(__INTEL_COMPILER)
+#define likely(cond) __builtin_expect ((cond), 1)
+#else
+#define likely(cond) cond
+#endif
+
 namespace faa {
 template <typename T>
 queue<T>::queue(const std::size_t max_threads) :
@@ -45,7 +51,7 @@ void queue<T>::enqueue(queue::pointer elem, const std::size_t thread_id) {
     if (likely(idx < NODE_SIZE)) {
       // fast path
       pointer null = nullptr;
-      if (likely(tail->items[idx].compare_exchange_strong(null, elem))) {
+      if (likely(tail->slots[idx].compare_exchange_strong(null, elem))) {
         this->m_hazard_pointers.clear_one(thread_id, HP_ENQ_TAIL);
         return;
       }
@@ -96,7 +102,7 @@ typename queue<T>::pointer queue<T>::dequeue(const std::size_t thread_id) {
     const auto idx = head->deq_idx.fetch_add(1);
     if (likely(idx < NODE_SIZE)) {
       // fast path
-      auto res = head->items[idx].exchange(reinterpret_cast<pointer>(TAKEN));
+      auto res = head->slots[idx].exchange(reinterpret_cast<pointer>(TAKEN));
       if (likely(res != nullptr)) {
         this->m_hazard_pointers.clear_one(thread_id, HP_DEQ_HEAD);
         return res;
