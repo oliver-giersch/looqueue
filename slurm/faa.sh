@@ -6,6 +6,6 @@
 #SBATCH --partition=standard96:test
 
 mkdir -p ../csv/faa/10M/throughput
-cd ../cmake-build-remote-release/ || exit
-./bench_throughput faa pairs > ../csv/faa/10M/throughput/pairs.csv
-./bench_throughput faa bursts > ../csv/faa/10M/throughput/bursts.csv
+cd ../cmake-build-remote-release/benches || exit
+./bench_throughput faa pairs > ../../csv/faa/10M/throughput/pairs.csv
+./bench_throughput faa bursts > ../../csv/faa/10M/throughput/bursts.csv

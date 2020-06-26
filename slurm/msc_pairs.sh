@@ -6,5 +6,5 @@
 #SBATCH --partition=standard96
 
 mkdir -p ../csv/msc/10M/throughput
-cd ../cmake-build-remote-release/ || exit
-./bench_throughput msc pairs > ../csv/msc/10M/throughput/pairs.csv
+cd ../cmake-build-remote-release/benches/ || exit
+./bench_throughput msc pairs > ../../csv/msc/10M/throughput/pairs.csv

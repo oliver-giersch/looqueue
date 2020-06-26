@@ -6,6 +6,6 @@
 #SBATCH --partition=standard96:test
 
 mkdir -p ../csv/lcr/10M/throughput
-cd ../cmake-build-remote-release/ || exit
-./bench_throughput lcr pairs > ../csv/lcr/10M/throughput/pairs.csv
-./bench_throughput lcr bursts > ../csv/lcr/10M/throughput/bursts.csv
+cd ../cmake-build-remote-release/benches/ || exit
+./bench_throughput lcr pairs > ../../csv/lcr/10M/throughput/pairs.csv
+./bench_throughput lcr bursts > ../../csv/lcr/10M/throughput/bursts.csv

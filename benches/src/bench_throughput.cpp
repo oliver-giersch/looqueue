@@ -157,10 +157,6 @@ void bench_pairwise(
     thread_ids.push_back(thread);
   }
 
-  // pre-allocates a vector for storing each run's measurements
-  std::vector<nanosecs> measurements{};
-  measurements.reserve(RUNS);
-
   for (std::size_t run = 0; run < RUNS; ++run) {
     auto queue = std::make_unique<Q>();
     boost::barrier barrier{ static_cast<unsigned>(threads + 1) };
@@ -203,21 +199,19 @@ void bench_pairwise(
     const auto start = std::chrono::high_resolution_clock::now();
     barrier.wait();
     const auto stop = std::chrono::high_resolution_clock::now();
-    measurements.push_back(stop - start);
+    const auto duration = stop - start;
 
     // joins all threads
     for (auto& handle : thread_handles) {
       handle.join();
     }
-  }
 
-  // print all measurements to stdout
-  for (const auto duration : measurements) {
+    // print measurements to stdout
     std::cout
-      << queue_name
-      << "," << threads
-      << "," << duration.count()
-      << "," << TOTAL_OPS << std::endl;
+        << queue_name
+        << "," << threads
+        << "," << duration.count()
+        << "," << TOTAL_OPS << std::endl;
   }
 }
 
