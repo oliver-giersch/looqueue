@@ -29,7 +29,7 @@ public:
 
 private:
   static constexpr std::size_t MAX_THREADS = 128;
-  static constexpr std::size_t RING_SIZE   = 1024;
+  static constexpr std::size_t RING_SIZE   = 128;
 
   /** enqueue and dequeue use the same hazard pointer */
   static constexpr std::size_t HP_ENQ_TAIL = 0;

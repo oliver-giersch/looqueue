@@ -26,10 +26,10 @@ class queue {
   static_assert(sizeof(T*) == 8, "loo::queue is only valid for 64-bit architectures");
 
   /** the number of slots for storing individual elements in each node */
-  static constexpr std::size_t NODE_SIZE = 1024;
-  /** the base node size is approximately 8192 bytes (plus some extra) and over-aligning them to
-   *  that size results in 13 usable tag bits. */
-  static constexpr std::size_t TAG_BITS  = 13;
+  static constexpr std::size_t NODE_SIZE = 128;
+  /** the base node size is approximately 1024 bytes (plus some extra) and
+   *  over-aligning them to that size results in 13 usable tag bits. */
+  static constexpr std::size_t TAG_BITS  = 11;
 
 public:
   /** see PROOF.md for the reasoning behind these constants */
@@ -42,9 +42,9 @@ public:
   queue();
   /** destructor */
   ~queue() noexcept;
-  /** enqueue (back) */
+  /** enqueue an element to the queue's back */
   void enqueue(pointer elem);
-  /** dequeue (front) */
+  /** dequeue an element from the queue's front */
   pointer dequeue();
 
   /** deleted constructors & operators */
