@@ -6,7 +6,7 @@
 #include <cassert>
 #include <limits>
 
-#include <cstdlib>
+#include "mimalloc.h"
 
 #include "looqueue/queue_fwd.hpp"
 #include "looqueue/detail/ordering.hpp"
@@ -69,7 +69,8 @@ struct queue<T>::node_t {
   }
 
   void* operator new(std::size_t size) {
-    return aligned_alloc(queue::NODE_ALIGN, size);
+    //return aligned_alloc(queue::NODE_ALIGN, size);
+    return mi_malloc_aligned(size, queue::NODE_ALIGN);
   }
 
   void operator delete(void* ptr) {

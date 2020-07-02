@@ -3,14 +3,16 @@ project(looqueue CXX)
 
 set(CMAKE_CXX_STANDARD 14)
 
-option(USE_SEQ_CST "use only sequentially consistent atomics" OFF)
+option(LOO_USE_SEQ_CST "use only sequentially consistent atomics" OFF)
 
-add_library(looqueue INTERFACE)
 add_subdirectory(benches)
 
+add_library(looqueue INTERFACE)
+target_compile_features(looqueue INTERFACE cxx_std_14)
+
 target_include_directories(looqueue INTERFACE include/)
-if(USE_SEQ_CST)
-    target_compile_definitions(looqueue INTERFACE USE_SEQ_CST)
+if(LOO_USE_SEQ_CST)
+    target_compile_definitions(looqueue PUBLIC LOO_USE_SEQ_CST=1)
 endif()
 
 add_executable(example examples/example.cpp)

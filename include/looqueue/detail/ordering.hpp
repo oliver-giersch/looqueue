@@ -3,7 +3,7 @@
 
 #include <atomic>
 
-#ifdef USE_SEQ_CST
+#ifdef LOO_USE_SEQ_CST
 #define RELAXED std::memory_order_seq_cst
 #define ACQUIRE std::memory_order_seq_cst
 #define RELEASE std::memory_order_seq_cst
