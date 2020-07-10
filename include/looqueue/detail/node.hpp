@@ -5,8 +5,11 @@
 #include <atomic>
 #include <cassert>
 #include <limits>
+#include <stdexcept>
 
-#include "mimalloc.h"
+#include <cstdlib>
+
+// #include "mimalloc.h"
 
 #include "looqueue/queue_fwd.hpp"
 #include "looqueue/detail/ordering.hpp"
@@ -51,7 +54,7 @@ struct queue<T>::node_t {
 
   /** ref-count constants */
   enum counter_consts_t : std::uint32_t {
-    /** bitshift for accessing the high 16 bits (the final completed operations count) */
+    /** bit-shift for accessing the high 16 bits (the final completed operations count) */
     SHIFT = 16,
     /** mask for the lower 16 bit (the current completed operations count) */
     MASK  = 0xFFFF,
@@ -69,8 +72,20 @@ struct queue<T>::node_t {
   }
 
   void* operator new(std::size_t size) {
-    //return aligned_alloc(queue::NODE_ALIGN, size);
-    return mi_malloc_aligned(size, queue::NODE_ALIGN);
+    const auto rem = size % queue::NODE_ALIGN;
+    auto mul = size / queue::NODE_ALIGN;
+
+    if (rem != 0) {
+      mul += 1;
+    }
+
+    //return mi_malloc_aligned(size, queue::NODE_ALIGN);
+    auto ptr = aligned_alloc(queue::NODE_ALIGN, queue::NODE_ALIGN * mul);
+    if (ptr == nullptr) {
+      throw std::bad_alloc();
+    }
+
+    return ptr;
   }
 
   void operator delete(void* ptr) {

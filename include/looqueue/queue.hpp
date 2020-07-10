@@ -88,7 +88,7 @@ template <typename T>
 typename queue<T>::pointer queue<T>::dequeue() {
   while (true) {
     // load head & tail for subsequent empty check
-    auto curr = marked_ptr_t(this->m_tail.load(RELAXED));
+    auto curr = marked_ptr_t(this->m_head.load(RELAXED));
     const auto tail = marked_ptr_t(this->m_tail.load(RELAXED)).decompose();
 
     // check if queue is empty BEFORE incrementing the dequeue index
@@ -120,7 +120,7 @@ typename queue<T>::pointer queue<T>::dequeue() {
         head.ptr->try_reclaim(0);
       }
 
-      // check the extracted pointer bits, if the result is null, the dequeing thread must have set
+      // check the extracted pointer bits, if the result is null, the deque thread must have set
       // the READ bit before the pointer bits have been set by the corresponding enqueue operation,
       // yet
       if (res != nullptr) {

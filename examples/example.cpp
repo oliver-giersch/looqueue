@@ -1,8 +1,8 @@
 #include "looqueue/queue.hpp"
 
 int main() {
-  loo::queue<int> queue{};
-  auto elem = 1;
+  loo::queue<unsigned > queue{};
+  auto elem = 0xDEADBEEF;
   queue.enqueue(&elem);
   auto dequeue = queue.dequeue();
 

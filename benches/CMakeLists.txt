@@ -1,10 +1,11 @@
 # looqueue build options (ineffective)
-# set(LOO_USE_SEQ_CST ON)
+set(LOO_USE_SEQ_CST ON)
 
 # mimalloc build options
 set(MI_BUILD_SHARED OFF)
 set(MI_BUILD_OBJECT OFF)
 set(MI_BUILD_TESTS  OFF)
+set(MI_USE_CXX      ON)
 
 # mimalloc library
 add_subdirectory(lib/mimalloc)
