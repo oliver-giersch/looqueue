@@ -5,6 +5,8 @@
 set(MI_BUILD_SHARED OFF)
 set(MI_BUILD_OBJECT OFF)
 set(MI_BUILD_TESTS  OFF)
+
+# mimalloc library
 add_subdirectory(lib/mimalloc)
 
 find_package(Threads REQUIRED)
