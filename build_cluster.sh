@@ -22,4 +22,4 @@ cmake -DCMAKE_BUILD_TYPE=Release \
 
 cd ..
 cmake --build cmake-build-remote-release/ --target bench_throughput -- -j 1
-module unload cmake gcc boost intel cmake
+module unload cmake intel boost gcc llvm
