@@ -4,6 +4,7 @@
 #SBATCH --time 04:00:00
 #SBATCH --nodes=1
 #SBATCH --partition=standard96
+#SBATCH -L ansys:1
 
 mkdir -p ../csv/msc/10M/throughput
 cd ../cmake-build-remote-release/benches/ || exit

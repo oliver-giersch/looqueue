@@ -56,7 +56,6 @@ void queue<T>::enqueue(queue::pointer elem) {
         RELEASE
       );
 
-
       if (likely(state <= node_t::slot_consts_t::RESUME)) {
         // no READ bit is set, RESUME may or may not be set - the element was successfully inserted
         // if the RESUME bit is set, the corresponding dequeue operation will act accordingly.
@@ -88,8 +87,8 @@ template <typename T>
 typename queue<T>::pointer queue<T>::dequeue() {
   while (true) {
     // load head & tail for subsequent empty check
-    auto curr = marked_ptr_t(this->m_head.load(RELAXED));
-    const auto tail = marked_ptr_t(this->m_tail.load(RELAXED)).decompose();
+    auto curr = marked_ptr_t(this->m_head.fetch_add(0, RELAXED));
+    const auto tail = marked_ptr_t(this->m_tail.fetch_add(0, RELAXED)).decompose();
 
     // check if queue is empty BEFORE incrementing the dequeue index
     if (queue::is_empty(curr.decompose(), tail)) {
@@ -217,7 +216,7 @@ detail::advance_tail_res_t queue<T>::try_advance_tail(
 ) {
   while (true) {
     // re-load the tail pointer to check if it has already been advanced
-    auto curr = marked_ptr_t(this->m_tail.load(RELAXED));
+    auto curr = marked_ptr_t(this->m_tail.fetch_add(0, RELAXED));
 
     // another thread has already advanced the tail pointer, so this thread can retry and will
     // likely enter the fast-path

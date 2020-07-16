@@ -9,8 +9,6 @@
 
 #include <cstdlib>
 
-// #include "mimalloc.h"
-
 #include "looqueue/queue_fwd.hpp"
 #include "looqueue/detail/ordering.hpp"
 
@@ -45,11 +43,11 @@ struct queue<T>::node_t {
   /** reclaim flag constants */
   enum reclaim_consts_t : std::uint8_t {
     /** all slots have been visited & determined to be consumed */
-    SLOTS = 0b001,
+    ARR = 0b001,
     /** all slow path enqueue ops have completed and the node can't be observed by new operations */
-    ENQUE = 0b010,
+    ENQ = 0b010,
     /** all slow path dequeue ops have completed and the node can't be observed by new operations */
-    DEQUE = 0b100,
+    DEQ = 0b100,
   };
 
   /** ref-count constants */
@@ -71,6 +69,7 @@ struct queue<T>::node_t {
     return (slot & slot_consts_t::READER) != 0;
   }
 
+  /** allocates a new node aligned to `NODE_ALIGN` */
   void* operator new(std::size_t size) {
     const auto rem = size % queue::NODE_ALIGN;
     auto mul = size / queue::NODE_ALIGN;
@@ -79,7 +78,7 @@ struct queue<T>::node_t {
       mul += 1;
     }
 
-    //return mi_malloc_aligned(size, queue::NODE_ALIGN);
+    // aligned_alloc requires size to be a multiple of the alignment
     auto ptr = aligned_alloc(queue::NODE_ALIGN, queue::NODE_ALIGN * mul);
     if (ptr == nullptr) {
       throw std::bad_alloc();
@@ -123,21 +122,21 @@ struct queue<T>::node_t {
       }
     }
 
-    // set the SLOTS bit, since all slots have been visited, so all fast path enqueue and dequeue
+    // set the ARR bit, since all slots have been visited, so all fast path enqueue and dequeue
     // ops must have finished and are no longer accessing the node
     const auto flags = this->reclaim_flags.fetch_add(
-      reclaim_consts_t::SLOTS,
+      reclaim_consts_t::ARR,
       ACQ_REL
     );
 
     // if all 3 bits are set after setting the SLOTS bit, the node can be reclaimed
-    if (flags == (reclaim_consts_t::ENQUE | reclaim_consts_t::DEQUE)) {
+    if (flags == (reclaim_consts_t::ENQ | reclaim_consts_t::DEQ)) {
       delete this;
     }
   }
 
   /** atomically increases the current operations count in `tail_cnt` and sets the final count if a
-   *  value other than 0 is passed; if both counts are equal, the ENQUE bit is set and the node will
+   *  value other than 0 is passed; if both counts are equal, the ENQ bit is set and the node will
    *  be reclaimed, if the other 2 bits have already been set. */
   void incr_enqueue_count(const std::uint64_t final_count = 0) {
     assert(final_count < std::numeric_limits<std::uint16_t>::max());
@@ -145,13 +144,13 @@ struct queue<T>::node_t {
 
     this->try_reclaim_after_incr(
       counts,
-      reclaim_consts_t::ENQUE,
-      reclaim_consts_t::SLOTS | reclaim_consts_t::DEQUE
+      reclaim_consts_t::ENQ,
+      reclaim_consts_t::ARR | reclaim_consts_t::DEQ
     );
   }
 
   /** atomically increases the current operations count in `head_cnt` and sets the final count if a
-   * value other than 0 is passed; if both counts are equal, the ENQUE bit is set and the node will
+   * value other than 0 is passed; if both counts are equal, the ENQ bit is set and the node will
    * be reclaimed, if the other 2 bits have already been set. */
   void incr_dequeue_count(const std::uint64_t final_count = 0) {
     assert(final_count < std::numeric_limits<std::uint16_t>::max());
@@ -159,8 +158,8 @@ struct queue<T>::node_t {
 
     this->try_reclaim_after_incr(
       counts,
-      reclaim_consts_t::DEQUE,
-      reclaim_consts_t::ENQUE | reclaim_consts_t::SLOTS
+      reclaim_consts_t::DEQ,
+      reclaim_consts_t::ENQ | reclaim_consts_t::ARR
     );
   }
 
