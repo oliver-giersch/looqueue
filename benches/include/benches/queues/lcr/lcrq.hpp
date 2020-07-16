@@ -2,7 +2,6 @@
 #define LOO_QUEUE_BENCHMARK_LCRQ_HPP
 
 #include "benches/queues/lcr/lcrq_fwd.hpp"
-
 #include "benches/queues/lcr/detail/node.hpp"
 
 namespace lcr {

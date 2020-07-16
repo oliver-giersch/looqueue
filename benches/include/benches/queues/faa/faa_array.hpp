@@ -92,9 +92,7 @@ typename queue<T>::pointer queue<T>::dequeue(const std::size_t thread_id) {
       continue;
     }
 
-    if (head->deq_idx.load() >= head->enq_idx.load()
-        && head->next.load() == nullptr
-    ) {
+    if (head->deq_idx.load() >= head->enq_idx.load() && head->next.load() == nullptr) {
       break;
     }
 

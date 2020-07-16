@@ -44,7 +44,7 @@ public:
 
 private:
   static constexpr std::size_t MAX_HAZARD_POINTERS = 4;
-  static constexpr std::size_t DEFAULT_SCAN_THRESHOLD = 0;
+  static constexpr std::size_t DEFAULT_SCAN_THRESHOLD = 1;
 
   using hazard_pointer_array_t = std::array<std::atomic<pointer>, MAX_HAZARD_POINTERS>;
 

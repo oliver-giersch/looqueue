@@ -87,8 +87,8 @@ template <typename T>
 typename queue<T>::pointer queue<T>::dequeue() {
   while (true) {
     // load head & tail for subsequent empty check
-    auto curr = marked_ptr_t(this->m_head.fetch_add(0, RELAXED));
-    const auto tail = marked_ptr_t(this->m_tail.fetch_add(0, RELAXED)).decompose();
+    auto curr = marked_ptr_t(this->m_head.load(RELAXED));
+    const auto tail = marked_ptr_t(this->m_tail.load(RELAXED)).decompose();
 
     // check if queue is empty BEFORE incrementing the dequeue index
     if (queue::is_empty(curr.decompose(), tail)) {
@@ -112,7 +112,7 @@ typename queue<T>::pointer queue<T>::dequeue() {
       const auto res = reinterpret_cast<pointer>(state & node_t::slot_consts_t::ELEM_MASK);
 
       // read access on the final slot in a node initiates the reclamation checks for that node,
-      // this ensures the procedure is most likely to succeede on the first attempt since all
+      // this ensures the procedure is most likely to succeed on the first attempt since all
       // previous enqueue and dequeue operations must have already been initiated (but not
       // necessarily completed)
       if (head.idx == queue::NODE_SIZE - 1) {
@@ -216,7 +216,7 @@ detail::advance_tail_res_t queue<T>::try_advance_tail(
 ) {
   while (true) {
     // re-load the tail pointer to check if it has already been advanced
-    auto curr = marked_ptr_t(this->m_tail.fetch_add(0, RELAXED));
+    auto curr = marked_ptr_t(this->m_tail.load(RELAXED));
 
     // another thread has already advanced the tail pointer, so this thread can retry and will
     // likely enter the fast-path
@@ -232,12 +232,7 @@ detail::advance_tail_res_t queue<T>::try_advance_tail(
     if (next == nullptr) {
       // there is no new node yet, allocate a new one and attempt to append it
       auto node = new node_t(elem);
-      const auto res = tail->next.compare_exchange_strong(
-        next,
-        node,
-        RELEASE,
-        RELAXED
-      );
+      const auto res = tail->next.compare_exchange_strong(next, node, RELEASE, RELAXED);
 
       if (res) {
         // the CAS succeeded in appending the node after the tail, now the tail has to be updated
