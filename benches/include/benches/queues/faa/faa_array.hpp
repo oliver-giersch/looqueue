@@ -12,7 +12,7 @@
 
 namespace faa {
 template <typename T>
-queue<T>::queue(const std::size_t max_threads) :
+queue<T>::queue(std::size_t max_threads) :
   m_hazard_pointers{ max_threads, 1 }
 {
   auto sentinel = new node_t();
@@ -31,7 +31,7 @@ queue<T>::~queue() noexcept {
 }
 
 template <typename T>
-void queue<T>::enqueue(queue::pointer elem, const std::size_t thread_id) {
+void queue<T>::enqueue(queue::pointer elem, std::size_t thread_id) {
   if (elem == nullptr) {
     throw std::invalid_argument("enqueue element must not be nullptr");
   }
@@ -80,7 +80,7 @@ void queue<T>::enqueue(queue::pointer elem, const std::size_t thread_id) {
 }
 
 template <typename T>
-typename queue<T>::pointer queue<T>::dequeue(const std::size_t thread_id) {
+typename queue<T>::pointer queue<T>::dequeue(std::size_t thread_id) {
   while (true) {
     auto head = this->m_hazard_pointers.protect_ptr(
         this->m_head.load(),

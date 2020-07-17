@@ -217,7 +217,7 @@ void bench_pairwise(
 
 template <typename Q, typename R>
 void bench_bursts(
-    const std::size_t threads,
+    std::size_t threads,
     const std::string& queue_name,
     make_queue_ref_fn<Q, R> make_queue_ref
 ) {

@@ -154,12 +154,7 @@ bool queue<T>::bounded_cas_loop(
   // this loop attempts to exchange the expected (pointer, tag) pair with the desired pair,
   // the expected value is updated after each unsuccessful invocation so it always contains the
   // latest observed index value
-  while (!node.compare_exchange_strong(
-    expected.as_integer(),
-    desired.to_integer(),
-    RELEASE,
-    RELAXED
-  )) {
+  while (!node.compare_exchange_strong(expected.as_int(), desired.to_int(), RELEASE, RELAXED)) {
     // the CAS failed but the read pointer value no longer matches the previous value, so another
     // thread must have updated the pointer
     if (expected.decompose_ptr() != old_node) {
@@ -210,10 +205,7 @@ detail::advance_head_res_t queue<T>::try_advance_head(
 }
 
 template <typename T>
-detail::advance_tail_res_t queue<T>::try_advance_tail(
-  queue::pointer elem,
-  queue::node_t* tail
-) {
+detail::advance_tail_res_t queue<T>::try_advance_tail(queue::pointer elem, queue::node_t* tail) {
   while (true) {
     // re-load the tail pointer to check if it has already been advanced
     auto curr = marked_ptr_t(this->m_tail.load(RELAXED));

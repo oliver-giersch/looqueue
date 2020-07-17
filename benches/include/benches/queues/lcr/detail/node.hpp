@@ -49,7 +49,7 @@ struct queue<T>::crq_node_t {
   alignas(CACHE_LINE_SIZE) std::atomic<crq_node_t*>      next;
   alignas(CACHE_LINE_SIZE) std::array<cell_t, RING_SIZE> cells;
 
-  static constexpr std::uint64_t decompose_idx_value(const std::uint64_t idx) {
+  static constexpr std::uint64_t decompose_idx_value(std::uint64_t idx) {
     return idx & INDEX_MASK;
   }
 

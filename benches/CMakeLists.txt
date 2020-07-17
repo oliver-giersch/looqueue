@@ -23,7 +23,7 @@ find_package(Boost 1.68.0 REQUIRED thread)
 add_executable(bench_throughput
         src/bench_throughput.cpp
         src/common.cpp)
-target_include_directories(bench_throughput PRIVATE include/)
+target_include_directories(bench_throughput PRIVATE include)
 target_link_libraries(bench_throughput PRIVATE
         looqueue
         ${Boost_LIBRARIES}
@@ -36,3 +36,13 @@ elseif(ALLOCATOR MATCHES "rpmalloc")
 endif()
 
 target_compile_definitions(bench_throughput PRIVATE LOO_USE_SEQ_CST)
+
+add_executable(test_lcrq src/test_lcrq.cpp)
+target_include_directories(test_lcrq PRIVATE include)
+target_link_libraries(test_lcrq PRIVATE
+        Threads::Threads
+        ${Boost_LIBRARIES}
+        looqueue)
+
+target_compile_options(test_lcrq PRIVATE -fsanitize=address)
+target_link_options(test_lcrq PRIVATE -fsanitize=address)

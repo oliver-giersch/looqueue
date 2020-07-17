@@ -41,12 +41,12 @@ public:
   }
 
   /** returns the underlying integer value */
-  std::uint64_t to_integer() const {
+  std::uint64_t to_int() const {
     return this->m_marked;
   }
 
   /** returns a reference to the underlying integer value */
-  std::uint64_t& as_integer() {
+  std::uint64_t& as_int() {
     return this->m_marked;
   }
 

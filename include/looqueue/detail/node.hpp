@@ -100,10 +100,7 @@ struct queue<T>::node_t {
 
   /** constructor w/ tentative first element */
   explicit node_t(pointer first) : node_t() {
-    this->slots[0].store(
-      reinterpret_cast<queue::slot_t>(first),
-      std::memory_order_relaxed
-    );
+    this->slots[0].store(reinterpret_cast<queue::slot_t>(first), std::memory_order_relaxed);
   }
 
   /** checks if all slots are consumed before attempting reclamation */
@@ -124,10 +121,7 @@ struct queue<T>::node_t {
 
     // set the ARR bit, since all slots have been visited, so all fast path enqueue and dequeue
     // ops must have finished and are no longer accessing the node
-    const auto flags = this->reclaim_flags.fetch_add(
-      reclaim_consts_t::ARR,
-      ACQ_REL
-    );
+    const auto flags = this->reclaim_flags.fetch_add(reclaim_consts_t::ARR, ACQ_REL);
 
     // if all 3 bits are set after setting the SLOTS bit, the node can be reclaimed
     if (flags == (reclaim_consts_t::ENQ | reclaim_consts_t::DEQ)) {
@@ -138,29 +132,29 @@ struct queue<T>::node_t {
   /** atomically increases the current operations count in `tail_cnt` and sets the final count if a
    *  value other than 0 is passed; if both counts are equal, the ENQ bit is set and the node will
    *  be reclaimed, if the other 2 bits have already been set. */
-  void incr_enqueue_count(const std::uint64_t final_count = 0) {
-    assert(final_count < std::numeric_limits<std::uint16_t>::max());
-    const auto counts = incr_count(this->tail_cnt, static_cast<std::uint16_t>(final_count));
+  void incr_enqueue_count(std::uint64_t final_count = 0) {
+    constexpr std::uint8_t EXPECTED_FLAGS = reclaim_consts_t::ARR | reclaim_consts_t::DEQ;
 
-    this->try_reclaim_after_incr(
-      counts,
-      reclaim_consts_t::ENQ,
-      reclaim_consts_t::ARR | reclaim_consts_t::DEQ
-    );
+    assert(final_count < std::numeric_limits<std::uint16_t>::max());
+    const auto counts = final_count == 0
+        ? incr_count(this->tail_cnt)
+        : incr_count_final(this->tail_cnt, static_cast<std::uint16_t>(final_count));
+
+    this->try_reclaim_after_incr(counts, reclaim_consts_t::ENQ, EXPECTED_FLAGS);
   }
 
   /** atomically increases the current operations count in `head_cnt` and sets the final count if a
    * value other than 0 is passed; if both counts are equal, the ENQ bit is set and the node will
    * be reclaimed, if the other 2 bits have already been set. */
-  void incr_dequeue_count(const std::uint64_t final_count = 0) {
-    assert(final_count < std::numeric_limits<std::uint16_t>::max());
-    const auto counts = incr_count(this->head_cnt, static_cast<std::uint16_t>(final_count));
+  void incr_dequeue_count(std::uint64_t final_count = 0) {
+    constexpr std::uint8_t EXPECTED_FLAGS = reclaim_consts_t::ENQ | reclaim_consts_t::ARR;
 
-    this->try_reclaim_after_incr(
-      counts,
-      reclaim_consts_t::DEQ,
-      reclaim_consts_t::ENQ | reclaim_consts_t::ARR
-    );
+    assert(final_count < std::numeric_limits<std::uint16_t>::max());
+    const auto counts = final_count == 0
+        ? incr_count(this->head_cnt)
+        : incr_count_final(this->head_cnt, static_cast<std::uint16_t>(final_count));
+
+    this->try_reclaim_after_incr(counts, reclaim_consts_t::DEQ, EXPECTED_FLAGS);
   }
 
 private:
@@ -168,20 +162,10 @@ private:
     std::uint16_t curr_count, final_count;
   };
 
-  /** increases the current count in `counter` and also (atomically) sets the final count, if a
-   *  value other than 0 is passed to this function */
-  static counts_t incr_count(
-    std::atomic<std::uint32_t>& counter,
-    std::uint16_t final_count = 0
-  ) {
-    const auto add = final_count == 0
-      ? 1
-      : 1 + (static_cast<std::uint32_t>(final_count) << counter_consts_t::SHIFT);
-    const auto mask = counter.fetch_add(add, RELAXED);
-
-    final_count = final_count == 0
-      ? static_cast<std::uint16_t>(mask >> counter_consts_t::SHIFT)
-      : final_count;
+  /** increases the current count in `counter` */
+  static counts_t incr_count(std::atomic<std::uint32_t>& counter) {
+    const auto mask = counter.fetch_add(1, RELAXED);
+    const auto final_count = static_cast<std::uint16_t>(mask >> counter_consts_t::SHIFT);
 
     return {
       static_cast<std::uint16_t>(1 + (mask & counter_consts_t::MASK)),
@@ -189,14 +173,24 @@ private:
     };
   }
 
+  /** increases the current count in `counter` and also (atomically) sets the final count */
+  static counts_t incr_count_final(
+      std::atomic<std::uint32_t>& counter,
+      std::uint16_t final_count
+  ) {
+    const auto add = 1 + (static_cast<std::uint32_t>(final_count) << counter_consts_t::SHIFT);
+    const auto mask = counter.fetch_add(add, RELAXED);
+
+    return {
+        static_cast<std::uint16_t>(1 + (mask & counter_consts_t::MASK)),
+        final_count
+    };
+  }
+
   /** compares the two counts, sets `flag_bit` in this node's reclaim flags and proceeds to
    *  de-allocate the node if the reclaim flags before setting the bit were equal to
    *  `expected_flags` */
-  void try_reclaim_after_incr(
-    const counts_t     counts,
-    const std::uint8_t flag_bit,
-    const std::uint8_t expected_flags
-  ) {
+  void try_reclaim_after_incr(counts_t counts, std::uint8_t flag_bit, std::uint8_t expected_flags) {
     if (counts.curr_count == counts.final_count) {
       const auto flags = this->reclaim_flags.fetch_add(flag_bit, ACQ_REL);
       if (flags == expected_flags) {

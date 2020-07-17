@@ -28,7 +28,7 @@ queue_type_t parse_queue_str(const std::string& queue) {
   );
 }
 
-void pin_current_thread(const std::size_t thread_id) {
+void pin_current_thread(std::size_t thread_id) {
   cpu_set_t set;
   CPU_ZERO(&set);
   CPU_SET(thread_id, &set);
