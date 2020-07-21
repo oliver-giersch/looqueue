@@ -67,8 +67,8 @@ void queue<T>::enqueue(queue::pointer elem) {
         tail.ptr->try_reclaim(tail.idx + 1);
       }
 
-      // only READ bit is set so the slot must be abandoned and both operations must retry on
-      // another slots
+      // only READ bit is set so the slot must be abandoned and both operations
+      // must retry on another slots
       continue;
     } else {
       // ** slow path ** no free slot is available in this node, so a new node has to be appended
@@ -95,8 +95,8 @@ typename queue<T>::pointer queue<T>::dequeue() {
       return nullptr;
     }
 
-    // increment the dequeue index, retrieve the head pointer and previous index value
-    // see PROOF.md regarding the (im)possibility of overflows
+    // increment the dequeue index, retrieve the head pointer and previous index
+    // value see PROOF.md regarding the (im)possibility of overflows
     curr = marked_ptr_t(this->m_head.fetch_add(1, ACQUIRE));
     const auto head = curr.decompose();
 
@@ -132,8 +132,8 @@ typename queue<T>::pointer queue<T>::dequeue() {
 
       continue;
     } else {
-      // ** slow path ** the current head node has been fully consumed and must be replaced by its
-      // successor, if there is one
+      // ** slow path ** the current head node has been fully consumed and must
+      // be replaced by its successor, if there is one
       switch (this->try_advance_head(curr, head.ptr, tail.ptr)) {
         case detail::advance_head_res_t::ADVANCED:    continue;
         case detail::advance_head_res_t::QUEUE_EMPTY: return nullptr;
@@ -155,8 +155,8 @@ bool queue<T>::bounded_cas_loop(
   // the expected value is updated after each unsuccessful invocation so it always contains the
   // latest observed index value
   while (!node.compare_exchange_strong(expected.as_int(), desired.to_int(), RELEASE, RELAXED)) {
-    // the CAS failed but the read pointer value no longer matches the previous value, so another
-    // thread must have updated the pointer
+    // the CAS failed but the read pointer value no longer matches the previous
+    // value, so another thread must have updated the pointer
     if (expected.decompose_ptr() != old_node) {
       return false;
     }
@@ -184,8 +184,8 @@ detail::advance_head_res_t queue<T>::try_advance_head(
   // load the current head's next pointer
   const auto next = head->next.load(ACQUIRE);
   if (next == nullptr || head == tail) {
-    // if there is no next node yet or if there is one but the tail pointer does not yet point at,
-    // the queue is determined to be empty
+    // if there is no next node yet or if there is one but the tail pointer does
+    // not yet point at, the queue is determined to be empty
     head->incr_dequeue_count();
     return detail::advance_head_res_t::QUEUE_EMPTY;
   }
@@ -210,8 +210,8 @@ detail::advance_tail_res_t queue<T>::try_advance_tail(queue::pointer elem, queue
     // re-load the tail pointer to check if it has already been advanced
     auto curr = marked_ptr_t(this->m_tail.load(RELAXED));
 
-    // another thread has already advanced the tail pointer, so this thread can retry and will
-    // likely enter the fast-path
+    // another thread has already advanced the tail pointer, so this thread can
+    // retry and will likely enter the fast-path
     if (tail != curr.decompose_ptr()) {
       tail->incr_enqueue_count();
       return detail::advance_tail_res_t::ADVANCED;

@@ -21,7 +21,8 @@
 using nanosecs = std::chrono::nanoseconds;
 
 constexpr std::size_t RUNS = 50;
-constexpr std::size_t TOTAL_OPS = 10'000'000;
+//constexpr std::size_t TOTAL_OPS = 10'000'000;
+constexpr std::size_t TOTAL_OPS = 1024;
 
 constexpr std::array<std::size_t, 15> THREADS{ 1, 2, 4, 8, 12, 16, 20, 24, 32, 40, 48, 56, 64, 80, 96 };
 

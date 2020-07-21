@@ -24,7 +24,6 @@ enum class advance_tail_res_t {
 template <typename T>
 class queue {
   static_assert(sizeof(T*) == 8, "loo::queue is only valid for 64-bit architectures");
-
   /** the number of slots for storing individual elements in each node */
   static constexpr std::size_t NODE_SIZE = 1024;
   /** the base node size is approximately 1024 bytes (plus some extra) and
@@ -72,10 +71,10 @@ private:
   /** loops and attempts to CAS `expected` with `desired` until either the CAS succeeds
    *  or the loaded pointer value (failure case) no longer matches `old_node` */
   static bool bounded_cas_loop(
-    atomic_slot_t& node,
-    marked_ptr_t&  expected,
-    marked_ptr_t   desired,
-    node_t*        old_node
+      atomic_slot_t& node,
+      marked_ptr_t&  expected,
+      marked_ptr_t   desired,
+      node_t*        old_node
   );
 
   /** attempts to advance the head node to its successor if there is one */
