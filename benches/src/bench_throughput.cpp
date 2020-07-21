@@ -21,8 +21,7 @@
 using nanosecs = std::chrono::nanoseconds;
 
 constexpr std::size_t RUNS = 50;
-//constexpr std::size_t TOTAL_OPS = 10'000'000;
-constexpr std::size_t TOTAL_OPS = 1024;
+constexpr std::size_t TOTAL_OPS = 1024 * 1024;
 
 constexpr std::array<std::size_t, 15> THREADS{ 1, 2, 4, 8, 12, 16, 20, 24, 32, 40, 48, 56, 64, 80, 96 };
 
@@ -185,7 +184,7 @@ void bench_pairwise(
               && (elem < &thread_ids.front() || elem > &thread_ids.back())
           ) {
             throw std::runtime_error(
-                "invalid element retrieved (detected undefined behaviour)"
+                "invalid element retrieved (undefined behaviour detected)"
             );
           }
         }
@@ -264,7 +263,7 @@ void bench_bursts(
               && (elem < &thread_ids.front() || elem > &thread_ids.back())
           ) {
             throw std::runtime_error(
-                "invalid element retrieved (detected undefined behaviour)"
+                "invalid element retrieved (undefined behaviour detected)"
             );
           }
         }
