@@ -42,9 +42,9 @@ public:
   /** destructor */
   ~queue() noexcept;
   /** enqueue an element to the queue's back */
-  void enqueue(pointer elem);
+  __attribute__ ((noinline)) void enqueue(pointer elem);
   /** dequeue an element from the queue's front */
-  pointer dequeue();
+  __attribute__ ((noinline)) pointer dequeue();
 
   /** deleted constructors & operators */
   queue(const queue&)            = delete;

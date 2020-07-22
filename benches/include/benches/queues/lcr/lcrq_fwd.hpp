@@ -19,8 +19,8 @@ public:
 
   explicit queue(std::size_t max_threads = MAX_THREADS);
   ~queue() noexcept;
-  void enqueue(pointer elem, std::size_t thread_id);
-  pointer dequeue(std::size_t thread_id);
+  __attribute__ ((noinline)) void enqueue(pointer elem, std::size_t thread_id);
+  __attribute__ ((noinline)) pointer dequeue(std::size_t thread_id);
 
   queue(const queue&)             = delete;
   queue(queue&&)                  = delete;
