@@ -7,8 +7,6 @@
 #include <limits>
 #include <stdexcept>
 
-#include <cstdlib>
-
 #include "looqueue/queue_fwd.hpp"
 #include "looqueue/detail/ordering.hpp"
 
@@ -20,10 +18,10 @@ struct queue<T>::node_t {
 
   /** struct members */
 
-  /** high 16 bit: final observed count of slow-path dequeue ops, low 16 bit: current count */
-  std::atomic<std::uint32_t> head_cnt{ 0 };
   /** array of individual slots for storing elements + state bits */
   slot_array_t               slots;
+  /** high 16 bit: final observed count of slow-path dequeue ops, low 16 bit: current count */
+  std::atomic<std::uint32_t> head_cnt{ 0 };
   /** high 16 bit: final observed count of slow-path enqueue ops, low 16 bit: current count */
   std::atomic<std::uint32_t> tail_cnt{ 0 };
   /** pointer to successor node */
