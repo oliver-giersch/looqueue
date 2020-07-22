@@ -28,7 +28,7 @@ class queue {
   static constexpr std::size_t NODE_SIZE = 128;
   /** the base node size is approximately 1024 bytes (plus some extra) and
    *  over-aligning them to that size results in 13 usable tag bits. */
-  static constexpr std::size_t TAG_BITS  = 11;
+  static constexpr std::size_t TAG_BITS  = 10;
 
 public:
   /** see PROOF.md for the reasoning behind these constants */

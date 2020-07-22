@@ -3,6 +3,7 @@
 #include <functional>
 #include <iostream>
 #include <memory>
+#include <random>
 #include <stdexcept>
 #include <string>
 #include <thread>
@@ -41,12 +42,6 @@ using msc_queue_ref = queue_ref<msc_queue>;
 template <typename Q, typename R>
 using make_queue_ref_fn = std::function<R(Q&, std::size_t)>;
 
-/********** helper structs ****************************************************/
-
-struct burst_measurements_t {
-  nanosecs enq, deq;
-};
-
 /** runs all bench iterations for the specified bench and queue */
 template <typename Q, typename R>
 void run_benches(
@@ -57,16 +52,24 @@ void run_benches(
 
 template <typename Q, typename R>
 void bench_pairwise(
-    std::size_t threads,
     const std::string& queue_name,
-    make_queue_ref_fn<Q, R> make_queue_ref
+    make_queue_ref_fn<Q, R> make_queue_ref,
+    std::size_t threads
 );
 
 template <typename Q, typename R>
 void bench_bursts(
-    std::size_t threads,
     const std::string& queue_name,
-    make_queue_ref_fn<Q, R> make_queue_ref
+    make_queue_ref_fn<Q, R> make_queue_ref,
+    std::size_t threads
+);
+
+template <typename Q, typename R>
+void bench_random(
+    const std::string& queue_name,
+    make_queue_ref_fn<Q, R> make_queue_ref,
+    std::size_t threads,
+    std::size_t ratio
 );
 
 int main(int argc, char* argv[3]) {
@@ -77,8 +80,10 @@ int main(int argc, char* argv[3]) {
   const std::string queue(argv[1]);
   const std::string bench(argv[2]);
 
-  if (bench != "pairs" && bench != "bursts") {
-    throw std::invalid_argument("argument `bench` must be 'pairs' or 'bursts'");
+  if (bench != "pairs" && bench != "bursts" && bench != "rand50" && bench != "rand75") {
+    throw std::invalid_argument(
+        "argument `bench` must be 'pairs', 'bursts', 'rand50' or 'rand75'"
+    );
   }
 
   const auto queue_type = bench::parse_queue_str(queue);
@@ -135,18 +140,22 @@ void run_benches(
     }
 
     if (bench == "pairs") {
-      bench_pairwise<Q, R>(threads, queue_name, make_queue_ref);
+      bench_pairwise<Q, R>(queue_name, make_queue_ref, threads);
     } else if (bench == "bursts") {
-      bench_bursts<Q, R>(threads, queue_name, make_queue_ref);
+      bench_bursts<Q, R>(queue_name, make_queue_ref, threads);
+    } else if (bench == "rand50") {
+      bench_random<Q, R>(queue_name, make_queue_ref, threads, 2);
+    } else if (bench == "rand75") {
+      bench_random<Q, R>(queue_name, make_queue_ref, threads, 3);
     }
   }
 }
 
 template <typename Q, typename R>
 void bench_pairwise(
-    const std::size_t threads,
     const std::string& queue_name,
-    make_queue_ref_fn<Q, R> make_queue_ref
+    make_queue_ref_fn<Q, R> make_queue_ref,
+    std::size_t threads
 ) {
   const auto ops_per_threads = TOTAL_OPS / threads;
 
@@ -179,10 +188,7 @@ void bench_pairwise(
           queue_ref.enqueue(&thread_ids.at(thread));
 
           auto elem = queue_ref.dequeue();
-          if (
-              elem != nullptr
-              && (elem < &thread_ids.front() || elem > &thread_ids.back())
-          ) {
+          if (elem != nullptr && (elem < &thread_ids.front() || elem > &thread_ids.back())) {
             throw std::runtime_error(
                 "invalid element retrieved (undefined behaviour detected)"
             );
@@ -217,9 +223,9 @@ void bench_pairwise(
 
 template <typename Q, typename R>
 void bench_bursts(
-    std::size_t threads,
     const std::string& queue_name,
-    make_queue_ref_fn<Q, R> make_queue_ref
+    make_queue_ref_fn<Q, R> make_queue_ref,
+    std::size_t threads
 ) {
   const auto ops_per_threads = TOTAL_OPS / threads;
 
@@ -303,3 +309,80 @@ void bench_bursts(
   }
 }
 
+template <typename Q, typename R>
+void bench_random(
+    const std::string& queue_name,
+    make_queue_ref_fn<Q, R> make_queue_ref,
+    std::size_t threads,
+    std::size_t ratio
+) {
+  const auto ops_per_threads = TOTAL_OPS / threads;
+
+  // pre-allocates a vector for storing the elements enqueued by each thread;
+  std::vector<std::size_t> thread_ids{};
+  thread_ids.reserve(threads);
+  for (std::size_t thread = 0; thread < threads; ++thread) {
+    thread_ids.push_back(thread);
+  }
+
+  for (std::size_t run = 0; run < RUNS; ++run) {
+    auto queue = std::make_unique<Q>();
+    boost::barrier barrier{ static_cast<unsigned>(threads + 1) };
+
+    // pre-allocates a vector for storing each thread's join handle
+    std::vector<std::thread> thread_handles{};
+    thread_handles.reserve(threads);
+
+    // spawns threads and performs pairwise enqueue and dequeue operations
+    for (std::size_t thread = 0; thread < threads; ++thread) {
+      thread_handles.emplace_back(std::thread([&, thread] {
+        bench::pin_current_thread(thread);
+        std::random_device device;
+        std::mt19937 generator(device());
+        std::uniform_int_distribution<unsigned> dist(1, 4);
+
+        auto&& queue_ref = make_queue_ref(*queue, thread);
+
+        // all threads synchronize at this barrier before starting
+        barrier.wait();
+
+        for (std::size_t op = 0; op < ops_per_threads; ++op) {
+          // 75% enqueues
+          if (dist(generator) <= ratio) {
+            queue_ref.enqueue(&thread_ids.at(thread));
+          // 25% dequeues
+          } else {
+            auto elem = queue_ref.dequeue();
+            if (elem != nullptr && (elem < &thread_ids.front() || elem > &thread_ids.back())) {
+              throw std::runtime_error(
+                  "invalid element retrieved (undefined behaviour detected)"
+              );
+            }
+          }
+        }
+
+        // all threads synchronize at this barrier before completing
+        barrier.wait();
+      }));
+    }
+
+    barrier.wait();
+    // measures total time once all threads have arrived at the barrier
+    const auto start = std::chrono::high_resolution_clock::now();
+    barrier.wait();
+    const auto stop = std::chrono::high_resolution_clock::now();
+    const auto duration = stop - start;
+
+    // joins all threads
+    for (auto& handle : thread_handles) {
+      handle.join();
+    }
+
+    // print measurements to stdout
+    std::cout
+        << queue_name
+        << "," << threads
+        << "," << duration.count()
+        << "," << TOTAL_OPS << std::endl;
+  }
+}
