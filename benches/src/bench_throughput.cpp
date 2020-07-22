@@ -185,13 +185,15 @@ void bench_pairwise(
         barrier.wait();
 
         for (std::size_t op = 0; op < ops_per_threads; ++op) {
-          queue_ref.enqueue(&thread_ids.at(thread));
-
-          auto elem = queue_ref.dequeue();
-          if (elem != nullptr && (elem < &thread_ids.front() || elem > &thread_ids.back())) {
-            throw std::runtime_error(
-                "invalid element retrieved (undefined behaviour detected)"
-            );
+          if (op % 2 == 0) {
+            queue_ref.enqueue(&thread_ids.at(thread));
+          } else {
+            auto elem = queue_ref.dequeue();
+            if (elem != nullptr && (elem < &thread_ids.front() || elem > &thread_ids.back())) {
+              throw std::runtime_error(
+                  "invalid element retrieved (undefined behaviour detected)"
+              );
+            }
           }
         }
 
@@ -259,7 +261,7 @@ void bench_bursts(
         }
 
         // (2) all threads synchronize at this barrier after completing their
-        // enqueue burst
+        // respective enqueue burst
         barrier.wait();
 
         for (std::size_t op = 0; op < ops_per_threads; ++op) {
@@ -337,8 +339,9 @@ void bench_random(
     for (std::size_t thread = 0; thread < threads; ++thread) {
       thread_handles.emplace_back(std::thread([&, thread] {
         bench::pin_current_thread(thread);
+
         std::random_device device;
-        std::mt19937 generator(device());
+        std::mt19937 rng(device());
         std::uniform_int_distribution<unsigned> dist(1, 4);
 
         auto&& queue_ref = make_queue_ref(*queue, thread);
@@ -347,10 +350,8 @@ void bench_random(
         barrier.wait();
 
         for (std::size_t op = 0; op < ops_per_threads; ++op) {
-          // 75% enqueues
-          if (dist(generator) <= ratio) {
+          if (dist(rng) <= ratio) {
             queue_ref.enqueue(&thread_ids.at(thread));
-          // 25% dequeues
           } else {
             auto elem = queue_ref.dequeue();
             if (elem != nullptr && (elem < &thread_ids.front() || elem > &thread_ids.back())) {
