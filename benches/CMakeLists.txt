@@ -1,4 +1,5 @@
 set(ALLOCATOR "system" CACHE STRING "Choose global allocator override [system|mimalloc|rpmalloc]")
+set(Boost_USE_STATIC_LIBS ON)
 
 # looqueue build options (ineffective)
 set(LOO_USE_SEQ_CST ON)
@@ -27,7 +28,8 @@ target_include_directories(bench_throughput PRIVATE include)
 target_link_libraries(bench_throughput PRIVATE
         looqueue
         ${Boost_LIBRARIES}
-        Threads::Threads)
+        Threads::Threads
+        -static -static-libgcc -static-libstdc++)
 
 if(ALLOCATOR MATCHES "mimalloc")
     target_link_libraries(bench_throughput PRIVATE mimalloc-static)

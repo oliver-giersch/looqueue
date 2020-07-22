@@ -22,10 +22,10 @@ struct queue<T>::node_t {
   std::atomic<std::uint32_t> head_cnt{ 0 };
   /** array of individual slots for storing elements + state bits */
   slot_array_t               slots;
-  /** pointer to successor node */
-  std::atomic<node_t*>       next{ nullptr };
   /** high 16 bit: final observed count of slow-path enqueue ops, low 16 bit: current count */
   std::atomic<std::uint32_t> tail_cnt{ 0 };
+  /** pointer to successor node */
+  std::atomic<node_t*>       next{ nullptr };
   /** bit mask for storing current reclamation status (all 3 bits set = node can be reclaimed) */
   std::atomic<std::uint8_t>  reclaim_flags{ 0 };
 
