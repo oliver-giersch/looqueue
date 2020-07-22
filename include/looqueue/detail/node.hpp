@@ -80,7 +80,7 @@ struct queue<T>::node_t {
   }
 
   /** checks if all slots are consumed before attempting reclamation */
-  void try_reclaim(const std::uint64_t start_idx) {
+  void try_reclaim(const std::uint64_t start_idx, bool is_first = false) {
     // iterate all slots beginning at `start_idx`
     for (auto idx = start_idx; idx < queue::NODE_SIZE; ++idx) {
       auto& slot = this->slots[idx];
@@ -98,6 +98,8 @@ struct queue<T>::node_t {
     // set the ARR bit, since all slots have been visited, so all fast path enqueue and dequeue
     // ops must have finished and are no longer accessing the node
     const auto flags = this->reclaim_flags.fetch_add(reclaim_consts_t::ARR, ACQ_REL);
+
+    if (is_first) return;
 
     // if all 3 bits are set after setting the SLOTS bit, the node can be reclaimed
     if (flags == (reclaim_consts_t::ENQ | reclaim_consts_t::DEQ)) {

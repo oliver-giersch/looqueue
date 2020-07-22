@@ -129,7 +129,7 @@ typename queue<T>::pointer queue<T>::dequeue() {
       // previous enqueue and dequeue operations must have already been initiated (but not
       // necessarily completed)
       if (head.idx == queue::NODE_SIZE) {
-        head.ptr->try_reclaim(0);
+        head.ptr->try_reclaim(0, true);
       }
 
       // ** slow path ** the current head node has been fully consumed and must
