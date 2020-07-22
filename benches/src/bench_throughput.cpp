@@ -266,10 +266,7 @@ void bench_bursts(
 
         for (std::size_t op = 0; op < ops_per_threads; ++op) {
           auto elem = queue_ref.dequeue();
-          if (
-              elem != nullptr
-              && (elem < &thread_ids.front() || elem > &thread_ids.back())
-          ) {
+          if (elem != nullptr && (elem < &thread_ids.front() || elem > &thread_ids.back())) {
             throw std::runtime_error(
                 "invalid element retrieved (undefined behaviour detected)"
             );
