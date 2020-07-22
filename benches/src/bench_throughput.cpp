@@ -22,7 +22,7 @@
 using nanosecs = std::chrono::nanoseconds;
 
 constexpr std::size_t RUNS = 50;
-constexpr std::size_t TOTAL_OPS = 1024 * 1024;
+constexpr std::size_t TOTAL_OPS = 2 * 1024 * 1024;
 
 constexpr std::array<std::size_t, 15> THREADS{ 1, 2, 4, 8, 12, 16, 20, 24, 32, 40, 48, 56, 64, 80, 96 };
 
@@ -50,6 +50,7 @@ void run_benches(
     make_queue_ref_fn<Q, R> make_queue_ref
 );
 
+/** runs the pairwise enqueue/dequeue benchmark */
 template <typename Q, typename R>
 void bench_pairwise(
     const std::string& queue_name,
@@ -57,6 +58,7 @@ void bench_pairwise(
     std::size_t threads
 );
 
+/** runs the burst benchmarks */
 template <typename Q, typename R>
 void bench_bursts(
     const std::string& queue_name,
@@ -64,6 +66,7 @@ void bench_bursts(
     std::size_t threads
 );
 
+/** runs the randomized benchmark */
 template <typename Q, typename R>
 void bench_random(
     const std::string& queue_name,
