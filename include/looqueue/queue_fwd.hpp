@@ -25,7 +25,7 @@ template <typename T>
 class queue {
   static_assert(sizeof(T*) == 8, "loo::queue is only valid for 64-bit architectures");
   /** the number of slots for storing individual elements in each node */
-  static constexpr std::size_t NODE_SIZE = 128;
+  static constexpr std::size_t NODE_SIZE = 1ull << 14ull;
   /** the base node size is approximately 1024 bytes (plus some extra) and
    *  over-aligning them to that size results in 13 usable tag bits. */
   static constexpr std::size_t TAG_BITS  = 16;

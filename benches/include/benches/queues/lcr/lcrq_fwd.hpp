@@ -28,7 +28,7 @@ public:
   queue& operator=(queue&&)       = delete;
 
 private:
-  static constexpr std::size_t RING_SIZE   = 128;
+  static constexpr std::size_t RING_SIZE   = 1ull << 14ull;
   static constexpr std::size_t MAX_THREADS = 128;
 
   /** enqueue and dequeue use the same hazard pointer */
