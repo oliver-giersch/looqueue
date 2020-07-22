@@ -87,8 +87,8 @@ template <typename T>
 typename queue<T>::pointer queue<T>::dequeue() {
   while (true) {
     // load head & tail for subsequent empty check
-    auto curr = marked_ptr_t(this->m_head.fetch_add(0, RELAXED));
-    const auto tail = marked_ptr_t(this->m_tail.fetch_add(0, RELAXED)).decompose();
+    auto curr = marked_ptr_t(this->m_head.load(RELAXED));
+    const auto tail = marked_ptr_t(this->m_tail.load(RELAXED)).decompose();
 
     // check if queue is empty BEFORE incrementing the dequeue index
     if (queue::is_empty(curr.decompose(), tail)) {

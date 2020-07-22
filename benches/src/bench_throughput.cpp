@@ -75,6 +75,8 @@ void bench_random(
     std::size_t ratio
 );
 
+__attribute__ ((noinline)) void backoff();
+
 int main(int argc, char* argv[3]) {
   if (argc < 3) {
     throw std::invalid_argument("too few program arguments");
@@ -198,6 +200,8 @@ void bench_pairwise(
               );
             }
           }
+
+          backoff();
         }
 
         // all threads synchronize at this barrier before completing
@@ -261,6 +265,7 @@ void bench_bursts(
 
         for (std::size_t op = 0; op < ops_per_threads; ++op) {
           queue_ref.enqueue(&thread_ids.at(thread));
+          backoff();
         }
 
         // (2) all threads synchronize at this barrier after completing their
@@ -274,6 +279,8 @@ void bench_bursts(
                 "invalid element retrieved (undefined behaviour detected)"
             );
           }
+
+          backoff();
         }
 
         // (3) all threads synchronize at this barrier before completing
@@ -360,6 +367,8 @@ void bench_random(
               );
             }
           }
+
+          backoff();
         }
 
         // all threads synchronize at this barrier before completing
@@ -386,4 +395,8 @@ void bench_random(
         << "," << duration.count()
         << "," << TOTAL_OPS << std::endl;
   }
+}
+
+void backoff() {
+  for (volatile int i = 0; i < 64; ++i) {}
 }
