@@ -2,9 +2,11 @@
 #define LOO_QUEUE_QUEUE_HPP
 
 #if defined(__GNUG__) || defined(__clang__) || defined(__INTEL_COMPILER)
-#define likely(cond) __builtin_expect ((cond), 1)
+#define likely(cond)   __builtin_expect ((cond), 1)
+#define unlikely(cond) __builtin_expect ((cond), 0)
 #else
-#define likely(cond) cond
+#define likely(cond)   cond
+#define unlikely(cond) cond
 #endif
 
 #include <stdexcept>
@@ -87,8 +89,8 @@ template <typename T>
 typename queue<T>::pointer queue<T>::dequeue() {
   while (true) {
     // load head & tail for subsequent empty check
-    auto curr = marked_ptr_t(this->m_head.fetch_add(0, RELAXED));
-    const auto tail = marked_ptr_t(this->m_tail.fetch_add(0, RELAXED)).decompose();
+    auto curr = marked_ptr_t(this->m_head.load(RELAXED));
+    const auto tail = marked_ptr_t(this->m_tail.load(RELAXED)).decompose();
 
     // check if queue is empty BEFORE incrementing the dequeue index
     if (queue::is_empty(curr.decompose(), tail)) {
@@ -111,14 +113,6 @@ typename queue<T>::pointer queue<T>::dequeue() {
       // extract the pointer bits from the retrieved value
       const auto res = reinterpret_cast<pointer>(state & node_t::slot_consts_t::ELEM_MASK);
 
-      // read access on the final slot in a node initiates the reclamation checks for that node,
-      // this ensures the procedure is most likely to succeed on the first attempt since all
-      // previous enqueue and dequeue operations must have already been initiated (but not
-      // necessarily completed)
-      if (head.idx == queue::NODE_SIZE - 1) {
-        head.ptr->try_reclaim(0);
-      }
-
       // check the extracted pointer bits, if the result is null, the deque thread must have set
       // the READ bit before the pointer bits have been set by the corresponding enqueue operation,
       // yet
@@ -132,6 +126,14 @@ typename queue<T>::pointer queue<T>::dequeue() {
 
       continue;
     } else {
+      // the first slow-path operation initiates the reclamation checks for the current node,
+      // which ensures the procedure is most likely to succeed on the first attempt since all
+      // previous enqueue and dequeue operations must have already been initiated (but not
+      // necessarily completed)
+      if (head.idx == queue::NODE_SIZE) {
+        head.ptr->try_reclaim(0);
+      }
+
       // ** slow path ** the current head node has been fully consumed and must
       // be replaced by its successor, if there is one
       switch (this->try_advance_head(curr, head.ptr, tail.ptr)) {
