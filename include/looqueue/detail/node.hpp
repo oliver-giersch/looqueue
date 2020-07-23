@@ -19,16 +19,16 @@ struct queue<T>::node_t {
 
   /** struct members */
 
-  /** high 16 bit: final observed count of slow-path dequeue ops, low 16 bit: current count */
-  alignas(CACHE_LINE_SIZE) atomic_uint32_t      head_cnt{ 0 };
-  /** high 16 bit: final observed count of slow-path enqueue ops, low 16 bit: current count */
-  alignas(CACHE_LINE_SIZE) atomic_uint32_t      tail_cnt{ 0 };
-  /** bit mask for storing current reclamation status (all 3 bits set = node can be reclaimed) */
-  alignas(CACHE_LINE_SIZE) atomic_uint8_t       reclaim_flags{ 0 };
   /** pointer to successor node */
-  alignas(CACHE_LINE_SIZE) std::atomic<node_t*> next{ nullptr };
+  std::atomic<node_t*> next{ nullptr };
+  /** high 16 bit: final observed count of slow-path dequeue ops, low 16 bit: current count */
+  atomic_uint32_t      head_cnt{ 0 };
   /** array of individual slots for storing elements + state bits */
-  alignas(CACHE_LINE_SIZE) slot_array_t         slots;
+  slot_array_t         slots;
+  /** high 16 bit: final observed count of slow-path enqueue ops, low 16 bit: current count */
+  atomic_uint32_t      tail_cnt{ 0 };
+  /** bit mask for storing current reclamation status (all 3 bits set = node can be reclaimed) */
+  atomic_uint8_t       reclaim_flags{ 0 };
 
   /** slot flag constants */
   enum slot_flags_t : std::uint64_t {

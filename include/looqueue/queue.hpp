@@ -100,7 +100,7 @@ typename queue<T>::pointer queue<T>::dequeue() {
     curr = marked_ptr_t(this->m_head.fetch_add(marked_ptr_t::INCREMENT, ACQUIRE));
     const auto head = curr.decompose();
 
-    if (head.idx < queue::NODE_SIZE) {
+    if (likely(head.idx < queue::NODE_SIZE)) {
       // ** fast path ** read access to the slot at tail.idx was uniquely reserved
       // set the READ bit in the slot (unique access ensures this is done exactly once)
       const auto state = head.ptr->slots[rotate_idx(head.idx)].fetch_add(

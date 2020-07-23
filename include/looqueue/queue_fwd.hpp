@@ -26,8 +26,6 @@ class queue {
   static_assert(sizeof(T*) == 8, "loo::queue is only valid for 64-bit architectures");
   /** the number of slots for storing individual elements in each node */
   static constexpr std::size_t NODE_SIZE = 1024;
-  /** the base node size is approximately 1024 bytes (plus some extra) and
-   *  over-aligning them to that size results in 13 usable tag bits. */
   static constexpr std::size_t TAG_BITS  = 16;
 
 public:
@@ -65,12 +63,12 @@ private:
   /** rotates consecutive indices to spread consecutive accesses to to slots
    *  on other cache lines */
   static constexpr std::uint64_t rotate_idx(std::uint64_t idx) {
-    /*const auto align = 16 * idx;
+    const auto align = 8 * idx;
     const auto rem = align / queue::NODE_SIZE;
     const auto mod = align % queue::NODE_SIZE;
 
-    return mod + rem;*/
-    return idx;
+    return mod + rem;
+    //return idx;
   }
 
   /** returns true if the queue is determined to be empty */
