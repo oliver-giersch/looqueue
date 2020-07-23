@@ -6,8 +6,8 @@
 #SBATCH --partition=standard96
 #SBATCH -L ansys:1
 
-PATH=../csv/msc/1M/throughput
+OUT_DIR=../csv/msc/1M/throughput
 
-mkdir -p $PATH
+mkdir -p $OUT_DIR
 cd ../cmake-build-remote-release/benches/ || exit
-./bench_throughput msc pairs > ../$PATH/pairs.csv
+./bench_throughput msc pairs > ../$OUT_DIR/pairs.csv
