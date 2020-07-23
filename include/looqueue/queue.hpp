@@ -38,7 +38,7 @@ void queue<T>::enqueue(queue::pointer elem) {
   // validate `elem` argument (must not be null and aligned so it can store 2 bits)
   if (elem == nullptr) {
     throw std::invalid_argument("`elem` must not be nullptr");
-  } else if ((reinterpret_cast<queue::slot_t>(elem) & node_t::slot_consts_t::STATE_MASK) != 0) {
+  } else if ((reinterpret_cast<queue::slot_t>(elem) & node_t::slot_flags_t::STATE_MASK) != 0) {
     throw std::invalid_argument("`elem` must be at least 4-byte aligned");
   }
 
@@ -51,16 +51,16 @@ void queue<T>::enqueue(queue::pointer elem) {
     if (likely(tail.idx < queue::NODE_SIZE)) {
       // ** fast path ** write access to the slot at tail.idx was uniquely reserved
       // write the `elem` bits into the slot (unique access ensures this is done exactly once)
-      const auto state = tail.ptr->slots[tail.idx].fetch_add(
+      const auto state = tail.ptr->slots[rotate_idx(tail.idx)].fetch_add(
         reinterpret_cast<queue::slot_t>(elem),
         RELEASE
       );
 
-      if (likely(state <= node_t::slot_consts_t::RESUME)) {
+      if (likely(state <= node_t::slot_flags_t::RESUME)) {
         // no READ bit is set, RESUME may or may not be set - the element was successfully inserted
         // if the RESUME bit is set, the corresponding dequeue operation will act accordingly.
         return;
-      } else if (state == (node_t::slot_consts_t::READER | node_t::slot_consts_t::RESUME)) {
+      } else if (state == (node_t::slot_flags_t::READER | node_t::slot_flags_t::RESUME)) {
         // both READ and RESUME are set, so this must be the final operation visiting this slot
         // hence the slot must be abandoned (dequeue finished too early) and `try_reclaim` must be
         // resumed
@@ -103,18 +103,18 @@ typename queue<T>::pointer queue<T>::dequeue() {
     if (head.idx < queue::NODE_SIZE) {
       // ** fast path ** read access to the slot at tail.idx was uniquely reserved
       // set the READ bit in the slot (unique access ensures this is done exactly once)
-      const auto state = head.ptr->slots[head.idx].fetch_add(
-        node_t::slot_consts_t::READER,
+      const auto state = head.ptr->slots[rotate_idx(head.idx)].fetch_add(
+        node_t::slot_flags_t::READER,
         ACQUIRE
       );
 
       // extract the pointer bits from the retrieved value
-      const auto res = reinterpret_cast<pointer>(state & node_t::slot_consts_t::ELEM_MASK);
+      const auto res = reinterpret_cast<pointer>(state & node_t::slot_flags_t::ELEM_MASK);
 
       // check the extracted pointer bits, if the result is null, the deque thread must have set the
       // READ bit before the pointer bits have been set by the corresponding enqueue operation, yet
       if (likely(res != nullptr)) {
-        if ((state & node_t::slot_consts_t::RESUME) != 0) {
+        if ((state & node_t::slot_flags_t::RESUME) != 0) {
           head.ptr->try_reclaim(head.idx + 1);
         }
 
@@ -128,7 +128,7 @@ typename queue<T>::pointer queue<T>::dequeue() {
       // previous enqueue and dequeue operations must have already been initiated (but not
       // necessarily completed)
       if (head.idx == queue::NODE_SIZE) {
-        head.ptr->try_reclaim(0, true);
+        head.ptr->try_reclaim(0);
       }
 
       // ** slow path ** the current head node has been fully consumed and must

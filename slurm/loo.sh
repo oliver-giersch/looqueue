@@ -6,9 +6,11 @@
 #SBATCH --partition=standard96:test
 #SBATCH -L ansys:1
 
-mkdir -p ../csv/loo/10M/throughput
+PATH=../csv/loo/1M/throughput
+
+mkdir -p $PATH
 cd ../cmake-build-remote-release/benches/ || exit
-./bench_throughput loo pairs > ../../csv/loo/10M/throughput/pairs.csv
-./bench_throughput loo bursts > ../../csv/loo/10M/throughput/bursts.csv
-./bench_throughput loo rand50 > ../../csv/loo/10M/throughput/rand50.csv
-./bench_throughput loo rand75 > ../../csv/loo/10M/throughput/rand75.csv
+./bench_throughput loo pairs  > ../$PATH/pairs.csv
+./bench_throughput loo bursts > ../$PATH/bursts.csv
+./bench_throughput loo rand50 > ../$PATH/rand50.csv
+./bench_throughput loo rand75 > ../$PATH/rand75.csv

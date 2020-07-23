@@ -2,10 +2,15 @@ cmake_policy(SET CMP0077 NEW)
 
 set(ALLOCATOR "system" CACHE STRING "Choose global allocator override [system|mimalloc|rpmalloc]")
 option(STATIC "using static linking" OFF)
+option(SKYLAKE "using -march=skylake-avx512" OFF)
 
 if(STATIC)
     MESSAGE("using static linking")
     set(Boost_USE_STATIC_LIBS ON)
+endif()
+
+if(SKYLAKE)
+    MESSAGE("using '-march=skylake-avx512' (Skylake CPU)")
 endif()
 
 # looqueue build options (ineffective)
@@ -27,6 +32,10 @@ endif()
 
 find_package(Threads REQUIRED)
 find_package(Boost 1.68.0 REQUIRED thread)
+
+if (SKYLAKE)
+    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -march=skylake-avx512")
+endif()
 
 add_executable(bench_throughput
         src/bench_throughput.cpp

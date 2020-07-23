@@ -150,8 +150,8 @@ typename queue<T>::pointer queue<T>::crq_node_t::dequeue() {
 
       if (val != nullptr) {
         if (idx == head) {
-          const cell_pair_t expected = { safe_bit | head, val };
-          const cell_pair_t desired  = { safe_bit | (head + RING_SIZE), nullptr };
+          const cell_pair_t expected = { (safe_bit | head), val };
+          const cell_pair_t desired  = { (safe_bit | (head + RING_SIZE)), nullptr };
 
           if (cell.cmpxchg16b(expected, desired)) {
             return val;
