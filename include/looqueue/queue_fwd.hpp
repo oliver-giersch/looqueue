@@ -40,9 +40,11 @@ public:
   /** destructor */
   ~queue() noexcept;
   /** enqueue an element to the queue's back */
-  __attribute__ ((noinline)) void enqueue(pointer elem);
+  __attribute__ ((noinline))
+  void enqueue(pointer elem);
   /** dequeue an element from the queue's front */
-  __attribute__ ((noinline)) pointer dequeue();
+  __attribute__ ((noinline))
+  pointer dequeue();
 
   /** deleted constructors & operators */
   queue(const queue&)            = delete;
@@ -60,17 +62,6 @@ private:
   struct node_t;
   using marked_ptr_t = typename detail::marked_ptr_t<node_t, TAG_BITS>;
 
-  /** rotates consecutive indices to spread consecutive accesses to to slots
-   *  on other cache lines */
-  static constexpr std::uint64_t rotate_idx(std::uint64_t idx) {
-    const auto align = 8 * idx;
-    const auto rem = align / queue::NODE_SIZE;
-    const auto mod = align % queue::NODE_SIZE;
-
-    return mod + rem;
-    //return idx;
-  }
-
   /** returns true if the queue is determined to be empty */
   static bool is_empty(
     typename marked_ptr_t::decomposed_t head,
@@ -87,9 +78,11 @@ private:
   );
 
   /** attempts to advance the head node to its successor if there is one */
+  __attribute__ ((noinline))
   detail::advance_head_res_t try_advance_head(marked_ptr_t curr, node_t* head, node_t* tail);
   /** attempts to advance the tail node to its successor if there is one or attempts to append a
    *  new node with `elem` stored in the first slot otherwise */
+  __attribute__ ((noinline))
   detail::advance_tail_res_t try_advance_tail(pointer elem, node_t* tail);
 
   alignas(CACHE_LINE_ALIGN) atomic_slot_t m_head{ 0 };

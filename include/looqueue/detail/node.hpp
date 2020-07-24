@@ -19,8 +19,6 @@ struct queue<T>::node_t {
 
   /** struct members */
 
-  /** pointer to successor node */
-  std::atomic<node_t*> next{ nullptr };
   /** high 16 bit: final observed count of slow-path dequeue ops, low 16 bit: current count */
   atomic_uint32_t      head_cnt{ 0 };
   /** array of individual slots for storing elements + state bits */
@@ -29,6 +27,8 @@ struct queue<T>::node_t {
   atomic_uint32_t      tail_cnt{ 0 };
   /** bit mask for storing current reclamation status (all 3 bits set = node can be reclaimed) */
   atomic_uint8_t       reclaim_flags{ 0 };
+  /** pointer to successor node */
+  std::atomic<node_t*> next{ nullptr };
 
   /** slot flag constants */
   enum slot_flags_t : std::uint64_t {
@@ -66,6 +66,28 @@ struct queue<T>::node_t {
 
     // no READ bit is set means no reader has visited the slot yet
     return (slot & slot_flags_t::READER) != 0;
+  }
+
+  /** allocates a new node aligned to `NODE_ALIGN` */
+  void* operator new(std::size_t size) {
+    const auto rem = size % queue::NODE_ALIGN;
+    auto mul = size / queue::NODE_ALIGN;
+
+    if (rem != 0) {
+      mul += 1;
+    }
+
+    // aligned_alloc requires size to be a multiple of the alignment
+    auto ptr = aligned_alloc(queue::NODE_ALIGN, queue::NODE_ALIGN * mul);
+    if (ptr == nullptr) {
+      throw std::bad_alloc();
+    }
+
+    return ptr;
+  }
+
+  void operator delete(void* ptr) {
+    free(ptr);
   }
 
   /** constructor (default) */

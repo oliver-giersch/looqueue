@@ -45,13 +45,13 @@ void queue<T>::enqueue(queue::pointer elem) {
   while (true) {
     // increment the enqueue index, retrieve the tail pointer and previous index value
     // see PROOF.md regarding the (im)possibility of overflows
-    const auto curr = marked_ptr_t(this->m_tail.fetch_add(marked_ptr_t::INCREMENT, ACQUIRE));
+    const auto curr = marked_ptr_t(this->m_tail.fetch_add(1, ACQUIRE));
     const auto tail = curr.decompose();
 
     if (likely(tail.idx < queue::NODE_SIZE)) {
       // ** fast path ** write access to the slot at tail.idx was uniquely reserved
       // write the `elem` bits into the slot (unique access ensures this is done exactly once)
-      const auto state = tail.ptr->slots[rotate_idx(tail.idx)].fetch_add(
+      const auto state = tail.ptr->slots[tail.idx].fetch_add(
         reinterpret_cast<queue::slot_t>(elem),
         RELEASE
       );
@@ -97,13 +97,13 @@ typename queue<T>::pointer queue<T>::dequeue() {
 
     // increment the dequeue index, retrieve the head pointer and previous index
     // value see PROOF.md regarding the (im)possibility of overflows
-    curr = marked_ptr_t(this->m_head.fetch_add(marked_ptr_t::INCREMENT, ACQUIRE));
+    curr = marked_ptr_t(this->m_head.fetch_add(1, ACQUIRE));
     const auto head = curr.decompose();
 
     if (likely(head.idx < queue::NODE_SIZE)) {
       // ** fast path ** read access to the slot at tail.idx was uniquely reserved
       // set the READ bit in the slot (unique access ensures this is done exactly once)
-      const auto state = head.ptr->slots[rotate_idx(head.idx)].fetch_add(
+      const auto state = head.ptr->slots[head.idx].fetch_add(
         node_t::slot_flags_t::READER,
         ACQUIRE
       );
