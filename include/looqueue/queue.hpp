@@ -214,7 +214,6 @@ detail::advance_tail_res_t queue<T>::try_advance_tail(queue::pointer elem, queue
     // load the current tail's next pointer to check if another thread has already appended a new
     // node to the queue but has not yet updated the tail pointer
     auto next = tail->next.load();
-
     if (next == nullptr) {
       // there is no new node yet, allocate a new one and attempt to append it
       auto node = new node_t(elem);

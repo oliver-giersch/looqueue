@@ -53,8 +53,8 @@ public:
   queue& operator=(queue&&)      = delete;
 
 private:
-  // each node must be aligned to this value in order to be able to store the
-  // required number of tag bits in every node pointer.
+  /* each node must be aligned to this value in order to be able to store the
+     required number of tag bits in every node pointer */
   static constexpr std::size_t NODE_ALIGN = 1ull << TAG_BITS;
 
   /** see queue::node_t::slot_flags_t */

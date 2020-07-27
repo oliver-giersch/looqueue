@@ -364,7 +364,7 @@ void bench_random(
 
         std::random_device device;
         std::mt19937 rng(device());
-        std::uniform_int_distribution<unsigned> dist(1, 4);
+        std::uniform_int_distribution<unsigned> dist(0, 100);
 
         auto&& queue_ref = make_queue_ref(*queue, thread);
 
@@ -372,7 +372,7 @@ void bench_random(
         barrier.wait();
 
         for (std::size_t op = 0; op < ops_per_threads; ++op) {
-          if (dist(rng) <= 3) {
+          if (dist(rng) <= 75) {
             queue_ref.enqueue(&thread_ids.at(thread));
           } else {
             auto elem = queue_ref.dequeue();

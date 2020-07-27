@@ -52,8 +52,7 @@ void queue<T>::enqueue(queue::pointer elem, std::size_t thread_id) {
       // fast path
       pointer null = nullptr;
       if (likely(tail->slots[idx].compare_exchange_strong(null, elem))) {
-        this->m_hazard_pointers.clear_one(thread_id, HP_ENQ_TAIL);
-        return;
+        break;
       }
 
       continue;
@@ -68,8 +67,7 @@ void queue<T>::enqueue(queue::pointer elem, std::size_t thread_id) {
         auto node = new node_t(elem);
         if (tail->cas_next(nullptr, node)) {
           this->cas_tail(tail, node);
-          this->m_hazard_pointers.clear_one(thread_id, HP_ENQ_TAIL);
-          return;
+          break;
         }
         delete node;
       } else {
@@ -77,6 +75,8 @@ void queue<T>::enqueue(queue::pointer elem, std::size_t thread_id) {
       }
     }
   }
+
+  this->m_hazard_pointers.clear_one(thread_id, HP_ENQ_TAIL);
 }
 
 template <typename T>
