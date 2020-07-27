@@ -29,11 +29,11 @@ class queue {
   static constexpr std::size_t TAG_BITS  = 11;
 
 public:
+  using pointer = T*;
+
   /** see PROOF.md for the reasoning behind these constants */
   static constexpr std::size_t MAX_PRODUCER_THREADS = (1ull << TAG_BITS) - NODE_SIZE + 1;
   static constexpr std::size_t MAX_CONSUMER_THREADS = ((1ull << TAG_BITS) - NODE_SIZE + 1) / 2;
-
-  using pointer = T*;
 
   /** constructor */
   queue();
@@ -53,6 +53,8 @@ public:
   queue& operator=(queue&&)      = delete;
 
 private:
+  // each node must be aligned to this value in order to be able to store the
+  // required number of tag bits in every node pointer.
   static constexpr std::size_t NODE_ALIGN = 1ull << TAG_BITS;
 
   /** see queue::node_t::slot_flags_t */

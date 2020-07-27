@@ -46,16 +46,12 @@ void queue<T>::enqueue(queue::pointer elem) {
     // increment the enqueue index, retrieve the tail pointer and previous index value
     // see PROOF.md regarding the (im)possibility of overflows
     const auto curr = marked_ptr_t(this->m_tail.fetch_add(1, ACQUIRE));
-    const auto tail = curr.decompose();
+    const auto [tail, idx] = curr.decompose();
 
-    if (likely(tail.idx < queue::NODE_SIZE)) {
+    if (likely(idx < queue::NODE_SIZE)) {
       // ** fast path ** write access to the slot at tail.idx was uniquely reserved
       // write the `elem` bits into the slot (unique access ensures this is done exactly once)
-      const auto state = tail.ptr->slots[tail.idx].fetch_add(
-        reinterpret_cast<queue::slot_t>(elem),
-        RELEASE
-      );
-
+      const auto state = tail->slots[idx].fetch_add(reinterpret_cast<queue::slot_t>(elem), RELEASE);
       if (likely(state <= node_t::slot_flags_t::RESUME)) {
         // no READ bit is set, RESUME may or may not be set - the element was successfully inserted
         // if the RESUME bit is set, the corresponding dequeue operation will act accordingly.
@@ -64,7 +60,7 @@ void queue<T>::enqueue(queue::pointer elem) {
         // both READ and RESUME are set, so this must be the final operation visiting this slot
         // hence the slot must be abandoned (dequeue finished too early) and `try_reclaim` must be
         // resumed
-        tail.ptr->try_reclaim(tail.idx + 1);
+        tail->try_reclaim(idx + 1);
       }
 
       // only READ bit is set so the slot must be abandoned and both operations
@@ -75,7 +71,7 @@ void queue<T>::enqueue(queue::pointer elem) {
       // that attempts to directly insert `elem` in the newly appended node's first slot and the
       // enqueue procedure is completed on success; in any case `tail` points at some successor node
       // when this sub-procedure completes
-      switch (this->try_advance_tail(elem, tail.ptr)) {
+      switch (this->try_advance_tail(elem, tail)) {
         case detail::advance_tail_res_t::ADVANCED_AND_INSERTED: return;
         case detail::advance_tail_res_t::ADVANCED:              continue;
       }
@@ -87,8 +83,11 @@ template <typename T>
 typename queue<T>::pointer queue<T>::dequeue() {
   while (true) {
     // load head & tail for subsequent empty check
-    auto curr = marked_ptr_t(this->m_head.load(RELAXED));
     const auto tail = marked_ptr_t(this->m_tail.load(RELAXED)).decompose();
+    // using a read-modify-write operation that does not actually modify the value acquires
+    // ownership of the variable's cache-line, making the subsequent FAA potentially more
+    // efficient (at least on x86)
+    auto curr = marked_ptr_t(this->m_head.fetch_add(0, RELAXED));
 
     // check if queue is empty BEFORE incrementing the dequeue index
     if (queue::is_empty(curr.decompose(), tail)) {
@@ -98,16 +97,12 @@ typename queue<T>::pointer queue<T>::dequeue() {
     // increment the dequeue index, retrieve the head pointer and previous index
     // value see PROOF.md regarding the (im)possibility of overflows
     curr = marked_ptr_t(this->m_head.fetch_add(1, ACQUIRE));
-    const auto head = curr.decompose();
+    const auto [head, idx] = curr.decompose();
 
-    if (likely(head.idx < queue::NODE_SIZE)) {
+    if (likely(idx < queue::NODE_SIZE)) {
       // ** fast path ** read access to the slot at tail.idx was uniquely reserved
       // set the READ bit in the slot (unique access ensures this is done exactly once)
-      const auto state = head.ptr->slots[head.idx].fetch_add(
-        node_t::slot_flags_t::READER,
-        ACQUIRE
-      );
-
+      const auto state = head->slots[idx].fetch_add(node_t::slot_flags_t::READER, ACQUIRE);
       // extract the pointer bits from the retrieved value
       const auto res = reinterpret_cast<pointer>(state & node_t::slot_flags_t::ELEM_MASK);
 
@@ -115,7 +110,7 @@ typename queue<T>::pointer queue<T>::dequeue() {
       // READ bit before the pointer bits have been set by the corresponding enqueue operation, yet
       if (likely(res != nullptr)) {
         if ((state & node_t::slot_flags_t::RESUME) != 0) {
-          head.ptr->try_reclaim(head.idx + 1);
+          head->try_reclaim(idx + 1);
         }
 
         return res;
@@ -127,13 +122,13 @@ typename queue<T>::pointer queue<T>::dequeue() {
       // which ensures the procedure is most likely to succeed on the first attempt since all
       // previous enqueue and dequeue operations must have already been initiated (but not
       // necessarily completed)
-      if (head.idx == queue::NODE_SIZE) {
-        head.ptr->try_reclaim(0);
+      if (idx == queue::NODE_SIZE) {
+        head->try_reclaim(0);
       }
 
       // ** slow path ** the current head node has been fully consumed and must
       // be replaced by its successor, if there is one
-      switch (this->try_advance_head(curr, head.ptr, tail.ptr)) {
+      switch (this->try_advance_head(curr, head, tail.ptr)) {
         case detail::advance_head_res_t::ADVANCED:    continue;
         case detail::advance_head_res_t::QUEUE_EMPTY: return nullptr;
       }

@@ -78,7 +78,7 @@ struct queue<T>::node_t {
     }
 
     // aligned_alloc requires size to be a multiple of the alignment
-    auto ptr = aligned_alloc(queue::NODE_ALIGN, queue::NODE_ALIGN * mul);
+    auto ptr = std::aligned_alloc(queue::NODE_ALIGN, queue::NODE_ALIGN * mul);
     if (ptr == nullptr) {
       throw std::bad_alloc();
     }

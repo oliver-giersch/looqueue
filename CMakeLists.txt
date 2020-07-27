@@ -3,14 +3,14 @@ cmake_policy(SET CMP0077 NEW)
 
 project(looqueue CXX)
 
-set(CMAKE_CXX_STANDARD 14)
+set(CMAKE_CXX_STANDARD 17)
 
 option(LOO_USE_SEQ_CST "use only sequentially consistent atomics" OFF)
 
 add_subdirectory(benches)
 
 add_library(looqueue INTERFACE)
-target_compile_features(looqueue INTERFACE cxx_std_14)
+target_compile_features(looqueue INTERFACE cxx_std_17)
 
 target_include_directories(looqueue INTERFACE include)
 if(LOO_USE_SEQ_CST)
