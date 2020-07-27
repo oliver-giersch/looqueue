@@ -1,12 +1,12 @@
 #!/bin/sh
 
 #SBATCH --job-name=faa
-#SBATCH --time 00:10:00
+#SBATCH --time 01:00:00
 #SBATCH --nodes=1
 #SBATCH --partition=standard96:test
 #SBATCH -L ansys:1
 
-OUT_DIR=../csv/faa/1M/throughput
+OUT_DIR=../csv/faa/100M/throughput
 
 mkdir -p $OUT_DIR
 cd ../cmake-build-remote-release/benches || exit

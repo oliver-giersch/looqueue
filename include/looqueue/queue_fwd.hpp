@@ -4,7 +4,7 @@
 #include <atomic>
 
 #include "align.hpp"
-#include "detail/marked_ptr.hpp"
+#include "detail/native_marked_ptr.hpp"
 
 namespace loo {
 namespace detail {
@@ -25,8 +25,8 @@ template <typename T>
 class queue {
   static_assert(sizeof(T*) == 8, "loo::queue is only valid for 64-bit architectures");
   /** the number of slots for storing individual elements in each node */
-  static constexpr std::size_t NODE_SIZE = 1024;
-  static constexpr std::size_t TAG_BITS  = 16;
+  static constexpr std::size_t NODE_SIZE = 128;
+  static constexpr std::size_t TAG_BITS  = 9;
 
 public:
   /** see PROOF.md for the reasoning behind these constants */
@@ -53,14 +53,14 @@ public:
   queue& operator=(queue&&)      = delete;
 
 private:
-  static constexpr std::size_t NODE_ALIGN = 1ull << TAG_BITS;
+  // static constexpr std::size_t NODE_ALIGN = 1ull << TAG_BITS;
 
   /** see queue::node_t::slot_flags_t */
   using slot_t        = std::uint64_t;
   using atomic_slot_t = std::atomic<slot_t>;
 
   struct node_t;
-  using marked_ptr_t = typename detail::marked_ptr_t<node_t, TAG_BITS>;
+  using marked_ptr_t = typename detail::native_marked_ptr_t<node_t, TAG_BITS>;
 
   /** returns true if the queue is determined to be empty */
   static bool is_empty(
