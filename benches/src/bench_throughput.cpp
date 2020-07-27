@@ -21,9 +21,6 @@
 
 using nanosecs = std::chrono::nanoseconds;
 
-constexpr std::size_t RUNS = 15;
-constexpr std::size_t TOTAL_OPS = 100 * 1024 * 1024;
-
 constexpr std::array<std::size_t, 15> THREADS{ 1, 2, 4, 8, 12, 16, 20, 24, 32, 40, 48, 56, 64, 80, 96 };
 
 /********** queue aliases *****************************************************/
@@ -45,6 +42,8 @@ using make_queue_ref_fn = std::function<R(Q&, std::size_t)>;
 /** runs all bench iterations for the specified bench and queue */
 template <typename Q, typename R>
 void run_benches(
+    std::size_t total_ops,
+    std::size_t runs,
     const std::string& bench,
     const std::string& queue_name,
     make_queue_ref_fn<Q, R> make_queue_ref
@@ -53,6 +52,8 @@ void run_benches(
 /** runs the pairwise enqueue/dequeue benchmark */
 template <typename Q, typename R>
 void bench_pairwise(
+    std::size_t total_ops,
+    std::size_t runs,
     const std::string& queue_name,
     make_queue_ref_fn<Q, R> make_queue_ref,
     std::size_t threads
@@ -61,6 +62,8 @@ void bench_pairwise(
 /** runs the burst benchmarks */
 template <typename Q, typename R>
 void bench_bursts(
+    std::size_t total_ops,
+    std::size_t runs,
     const std::string& queue_name,
     make_queue_ref_fn<Q, R> make_queue_ref,
     std::size_t threads
@@ -69,25 +72,31 @@ void bench_bursts(
 /** runs the randomized benchmark */
 template <typename Q, typename R>
 void bench_random(
+    std::size_t total_ops,
+    std::size_t runs,
     const std::string& queue_name,
     make_queue_ref_fn<Q, R> make_queue_ref,
-    std::size_t threads,
-    std::size_t ratio
+    std::size_t threads
 );
 
-int main(int argc, char* argv[3]) {
-  if (argc < 3) {
+int main(int argc, char* argv[5]) {
+  if (argc < 5) {
     throw std::invalid_argument("too few program arguments");
   }
 
   const std::string queue(argv[1]);
   const std::string bench(argv[2]);
+  const std::string size_str(argv[3]);
+  const std::string runs_str(argv[4]);
 
-  if (bench != "pairs" && bench != "bursts" && bench != "rand50" && bench != "rand75") {
+  if (bench != "pairs" && bench != "bursts" && bench != "rand") {
     throw std::invalid_argument(
-        "argument `bench` must be 'pairs', 'bursts', 'rand50' or 'rand75'"
+        "argument `bench` must be 'pairs', 'bursts' or 'rand'"
     );
   }
+
+  const auto total_ops = bench::parse_size_str(size_str);
+  const auto runs = bench::parse_runs_str(runs_str);
 
   const auto queue_type = bench::parse_queue_str(queue);
   const std::string queue_name{ bench::display_str(queue_type) };
@@ -95,6 +104,8 @@ int main(int argc, char* argv[3]) {
   switch (queue_type) {
     case bench::queue_type_t::LCR:
       run_benches<lcr_queue , lcr_queue_ref>(
+        total_ops,
+        runs,
         bench,
         queue_name,
         [](auto& queue, auto thread_id) -> auto {
@@ -104,6 +115,8 @@ int main(int argc, char* argv[3]) {
       break;
     case bench::queue_type_t::LOO:
       run_benches<loo_queue, loo_queue&>(
+          total_ops,
+          runs,
           bench,
           queue_name,
           [](auto& queue, auto) -> auto& { return queue; }
@@ -111,6 +124,8 @@ int main(int argc, char* argv[3]) {
       break;
     case bench::queue_type_t::FAA:
       run_benches<faa_queue, faa_queue_ref>(
+          total_ops,
+          runs,
           bench,
           queue_name,
           [](auto& queue, auto thread_id) -> auto {
@@ -120,6 +135,8 @@ int main(int argc, char* argv[3]) {
       break;
     case bench::queue_type_t::MSC:
       run_benches<msc_queue, msc_queue_ref>(
+          total_ops,
+          runs,
           bench,
           queue_name,
           [](auto& queue, auto thread_id) -> auto {
@@ -132,6 +149,8 @@ int main(int argc, char* argv[3]) {
 
 template <typename Q, typename R>
 void run_benches(
+    std::size_t total_ops,
+    std::size_t runs,
     const std::string& bench,
     const std::string& queue_name,
     make_queue_ref_fn<Q, R> make_queue_ref
@@ -143,24 +162,24 @@ void run_benches(
     }
 
     if (bench == "pairs") {
-      bench_pairwise<Q, R>(queue_name, make_queue_ref, threads);
+      bench_pairwise<Q, R>(total_ops, runs, queue_name, make_queue_ref, threads);
     } else if (bench == "bursts") {
-      bench_bursts<Q, R>(queue_name, make_queue_ref, threads);
-    } else if (bench == "rand50") {
-      bench_random<Q, R>(queue_name, make_queue_ref, threads, 2);
-    } else if (bench == "rand75") {
-      bench_random<Q, R>(queue_name, make_queue_ref, threads, 3);
+      bench_bursts<Q, R>(total_ops, runs, queue_name, make_queue_ref, threads);
+    } else if (bench == "rand") {
+      bench_random<Q, R>(total_ops, runs, queue_name, make_queue_ref, threads);
     }
   }
 }
 
 template <typename Q, typename R>
 void bench_pairwise(
+    std::size_t total_ops,
+    std::size_t runs,
     const std::string& queue_name,
     make_queue_ref_fn<Q, R> make_queue_ref,
     std::size_t threads
 ) {
-  const auto ops_per_threads = TOTAL_OPS / threads;
+  const auto ops_per_threads = total_ops / threads;
 
   // pre-allocates a vector for storing the elements enqueued by each thread;
   std::vector<std::size_t> thread_ids{};
@@ -169,7 +188,7 @@ void bench_pairwise(
     thread_ids.push_back(thread);
   }
 
-  for (std::size_t run = 0; run < RUNS; ++run) {
+  for (std::size_t run = 0; run < runs; ++run) {
     auto queue = std::make_unique<Q>();
     boost::barrier barrier{ static_cast<unsigned>(threads + 1) };
 
@@ -222,17 +241,19 @@ void bench_pairwise(
         << queue_name
         << "," << threads
         << "," << duration.count()
-        << "," << TOTAL_OPS << std::endl;
+        << "," << total_ops << std::endl;
   }
 }
 
 template <typename Q, typename R>
 void bench_bursts(
+    std::size_t total_ops,
+    std::size_t runs,
     const std::string& queue_name,
     make_queue_ref_fn<Q, R> make_queue_ref,
     std::size_t threads
 ) {
-  const auto ops_per_threads = TOTAL_OPS / threads;
+  const auto ops_per_threads = total_ops / threads;
 
   // pre-allocates a vector for storing the elements enqueued by each thread;
   std::vector<std::size_t> thread_ids{};
@@ -241,7 +262,7 @@ void bench_bursts(
     thread_ids.push_back(thread);
   }
 
-  for (std::size_t run = 0; run < RUNS; ++run) {
+  for (std::size_t run = 0; run < runs; ++run) {
     auto queue = std::make_unique<Q>();
     boost::barrier barrier{ static_cast<unsigned>(threads + 1) };
 
@@ -307,18 +328,19 @@ void bench_bursts(
         << "," << threads
         << "," << enq.count()
         << "," << deq.count()
-        << "," << TOTAL_OPS << std::endl;
+        << "," << total_ops << std::endl;
   }
 }
 
 template <typename Q, typename R>
 void bench_random(
+    std::size_t total_ops,
+    std::size_t runs,
     const std::string& queue_name,
     make_queue_ref_fn<Q, R> make_queue_ref,
-    std::size_t threads,
-    std::size_t ratio
+    std::size_t threads
 ) {
-  const auto ops_per_threads = TOTAL_OPS / threads;
+  const auto ops_per_threads = total_ops / threads;
 
   // pre-allocates a vector for storing the elements enqueued by each thread;
   std::vector<std::size_t> thread_ids{};
@@ -327,7 +349,7 @@ void bench_random(
     thread_ids.push_back(thread);
   }
 
-  for (std::size_t run = 0; run < RUNS; ++run) {
+  for (std::size_t run = 0; run < runs; ++run) {
     auto queue = std::make_unique<Q>();
     boost::barrier barrier{ static_cast<unsigned>(threads + 1) };
 
@@ -350,7 +372,7 @@ void bench_random(
         barrier.wait();
 
         for (std::size_t op = 0; op < ops_per_threads; ++op) {
-          if (dist(rng) <= ratio) {
+          if (dist(rng) <= 3) {
             queue_ref.enqueue(&thread_ids.at(thread));
           } else {
             auto elem = queue_ref.dequeue();
@@ -384,6 +406,6 @@ void bench_random(
         << queue_name
         << "," << threads
         << "," << duration.count()
-        << "," << TOTAL_OPS << std::endl;
+        << "," << total_ops << std::endl;
   }
 }

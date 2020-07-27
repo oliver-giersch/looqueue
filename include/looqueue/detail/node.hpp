@@ -69,7 +69,7 @@ struct queue<T>::node_t {
   }
 
   /** allocates a new node aligned to `NODE_ALIGN` */
-  /*void* operator new(std::size_t size) {
+  void* operator new(std::size_t size) {
     const auto rem = size % queue::NODE_ALIGN;
     auto mul = size / queue::NODE_ALIGN;
 
@@ -88,7 +88,7 @@ struct queue<T>::node_t {
 
   void operator delete(void* ptr) {
     free(ptr);
-  }*/
+  }
 
   /** constructor (default) */
   node_t() {

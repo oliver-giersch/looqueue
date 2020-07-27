@@ -23,6 +23,8 @@ constexpr const char* display_str(queue_type_t queue) {
 
 /** parses the given string to the corresponding queue type */
 queue_type_t parse_queue_str(const std::string& queue);
+std::size_t parse_size_str(const std::string& size);
+std::size_t parse_runs_str(const std::string& runs);
 /** pins the thread with the given id to the core with the same number */
 void pin_current_thread(std::size_t thread_id);
 }

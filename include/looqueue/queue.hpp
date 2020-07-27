@@ -45,7 +45,7 @@ void queue<T>::enqueue(queue::pointer elem) {
   while (true) {
     // increment the enqueue index, retrieve the tail pointer and previous index value
     // see PROOF.md regarding the (im)possibility of overflows
-    const auto curr = marked_ptr_t(this->m_tail.fetch_add(marked_ptr_t::INCREMENT, ACQUIRE));
+    const auto curr = marked_ptr_t(this->m_tail.fetch_add(1, ACQUIRE));
     const auto tail = curr.decompose();
 
     if (likely(tail.idx < queue::NODE_SIZE)) {
@@ -97,7 +97,7 @@ typename queue<T>::pointer queue<T>::dequeue() {
 
     // increment the dequeue index, retrieve the head pointer and previous index
     // value see PROOF.md regarding the (im)possibility of overflows
-    curr = marked_ptr_t(this->m_head.fetch_add(marked_ptr_t::INCREMENT, ACQUIRE));
+    curr = marked_ptr_t(this->m_head.fetch_add(1, ACQUIRE));
     const auto head = curr.decompose();
 
     if (likely(head.idx < queue::NODE_SIZE)) {
