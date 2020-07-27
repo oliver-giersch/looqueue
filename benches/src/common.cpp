@@ -29,39 +29,26 @@ queue_type_t parse_queue_str(const std::string& queue) {
 }
 
 std::size_t parse_size_str(const std::string& size) {
-  if (size == "1K") {
-    return 1024;
+  constexpr const char* ERR_MSG =
+      "argument 'size' must contain an integer number between 1 and 100 followed by either K or M";
+
+  if (size.size() <= 1) {
+    throw std::invalid_argument(ERR_MSG);
   }
 
-  if (size == "10K") {
-    return 10 * 1024;
+  const auto sub = size.substr(0, size.size() - 1);
+  const auto fac = size.back();
+
+  auto val = std::stoi(sub);
+  if (val <= 0 || val > 100) {
+    throw std::invalid_argument(ERR_MSG);
   }
 
-  if (size == "50K") {
-    return 50 * 1024;
+  switch (fac) {
+    case 'K': return static_cast<std::size_t>(val) * 1024;
+    case 'M': return static_cast<std::size_t>(val) * 1024 * 1024;
+    default: throw std::invalid_argument(ERR_MSG);
   }
-
-  if (size == "100K") {
-    return 100 * 1024;
-  }
-
-  if (size == "1M") {
-    return 1024 * 1024;
-  }
-
-  if (size == "10M") {
-    return 10 * 1024 * 1024;
-  }
-
-  if (size == "50M") {
-    return 50 * 1024 * 1024;
-  }
-
-  if (size == "100M") {
-    return 100 * 1024 * 1024;
-  }
-
-  throw std::invalid_argument("argument `size` must be one of [1K|10K|50K|100K|1M|10M|50M|100M]");
 }
 
 std::size_t parse_runs_str(const std::string& runs) {
