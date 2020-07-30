@@ -15,8 +15,10 @@ public:
 
   explicit queue(std::size_t max_threads = MAX_THREADS);
   ~queue() noexcept;
-  __attribute__ ((noinline)) void enqueue(pointer elem, std::size_t thread_id);
-  __attribute__ ((noinline)) pointer dequeue(std::size_t thread_id);
+  __attribute__ ((noinline))
+  void enqueue(pointer elem, std::size_t thread_id);
+  __attribute__ ((noinline))
+  pointer dequeue(std::size_t thread_id);
 
   queue(const queue&)             = delete;
   queue(queue&&)                  = delete;
@@ -41,7 +43,7 @@ private:
   alignas(CACHE_LINE_ALIGN) std::atomic<node_t*> m_head;
   alignas(CACHE_LINE_ALIGN) std::atomic<node_t*> m_tail;
 
-  memory::hazard_pointers<node_t> m_hazard_pointers;
+  memory::hazard_pointers<node_t> m_hazard_ptrs;
 };
 }
 

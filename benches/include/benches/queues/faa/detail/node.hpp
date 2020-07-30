@@ -10,10 +10,7 @@
 namespace faa {
 template <typename T>
 struct queue<T>::node_t {
-  using slot_array_t = std::array<
-      std::atomic<queue::pointer>,
-      queue::NODE_SIZE
-  >;
+  using slot_array_t = std::array<std::atomic<queue::pointer>, queue::NODE_SIZE>;
 
   std::atomic<std::uint32_t> enq_idx{ 0 };
   slot_array_t               slots;
@@ -29,8 +26,12 @@ struct queue<T>::node_t {
     this->slots[0].store(first, std::memory_order_relaxed);
   }
 
-  bool cas_next(node_t* curr, node_t* next_node) {
-    return this->next.compare_exchange_strong(curr, next_node);
+  bool cas_slot_at(std::size_t idx, queue::pointer expected, queue::pointer desired) {
+    return this->slots[idx].compare_exchange_strong(expected, desired);
+  }
+
+  bool cas_next(node_t* expected, node_t* desired) {
+    return this->next.compare_exchange_strong(expected, desired);
   }
 
 private:

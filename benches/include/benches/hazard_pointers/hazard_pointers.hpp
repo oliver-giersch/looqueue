@@ -29,19 +29,16 @@ hazard_pointers<T>::~hazard_pointers<T>() noexcept {
 }
 
 template<typename T>
-void hazard_pointers<T>::clear_one(
-    const std::size_t thread_id,
-    const std::size_t hp
-) {
-  auto& thread_block = this->m_thread_blocks.at(thread_id);
-  thread_block.hazard_pointers.at(hp).store(nullptr, std::memory_order_release);
+void hazard_pointers<T>::clear_one(std::size_t thread_id, std::size_t hp) {
+  auto& thread_block = this->m_thread_blocks[thread_id];
+  thread_block.hazard_pointers[hp].ptr.store(nullptr, std::memory_order_release);
 }
 
 template<typename T>
 void hazard_pointers<T>::clear(const std::size_t thread_id) {
-  auto& thread_block = this->m_thread_blocks.at(thread_id);
-  for (auto& hp : thread_block.hazard_pointers) {
-    hp.store(nullptr, std::memory_order_relaxed);
+  auto& thread_block = this->m_thread_blocks[thread_id];
+  for (auto& hazard_ptr : thread_block.hazard_pointers) {
+    hazard_ptr.ptr.store(nullptr, std::memory_order_relaxed);
   }
 
   std::atomic_thread_fence(std::memory_order_release);
@@ -50,13 +47,13 @@ void hazard_pointers<T>::clear(const std::size_t thread_id) {
 template<typename T>
 typename hazard_pointers<T>::pointer hazard_pointers<T>::protect(
     const std::atomic<hazard_pointers::pointer>& atomic,
-    const std::size_t thread_id,
-    const std::size_t hp
+    std::size_t thread_id,
+    std::size_t hp
 ) {
-  auto& hazard_pointer = this->m_thread_blocks.at(thread_id).hazard_pointers.at(hp);
+  auto& hazard_ptr = this->m_thread_blocks[thread_id].hazard_pointers[hp];
   auto curr = atomic.load();
   while (true) {
-    hazard_pointer.store(curr);
+    hazard_ptr.ptr.store(curr);
     const auto temp = atomic.load();
     if (curr == temp) {
       return curr;
@@ -68,25 +65,21 @@ typename hazard_pointers<T>::pointer hazard_pointers<T>::protect(
 
 template<typename T>
 typename hazard_pointers<T>::pointer hazard_pointers<T>::protect_ptr(
-    const hazard_pointers::pointer ptr,
-    const std::size_t thread_id,
-    const std::size_t hp
+    hazard_pointers::pointer ptr,
+    std::size_t thread_id,
+    std::size_t hp
 ) {
-  auto& hazard_pointer = this->m_thread_blocks.at(thread_id).hazard_pointers.at(hp);
-  hazard_pointer.store(ptr);
+  auto& hazard_ptr = this->m_thread_blocks[thread_id].hazard_pointers[hp];
+  hazard_ptr.ptr.store(ptr);
+
   return ptr;
 }
 
 template<typename T>
-void hazard_pointers<T>::retire(
-    hazard_pointers::pointer ptr,
-    const std::size_t thread_id
-) {
-  auto& thread_retired_objects = this->m_thread_blocks
-      .at(thread_id)
-      .retired_objects;
-
+void hazard_pointers<T>::retire(hazard_pointers::pointer ptr, std::size_t thread_id) {
+  auto& thread_retired_objects = this->m_thread_blocks[thread_id].retired_objects;
   thread_retired_objects.push_back(ptr);
+
   if (thread_retired_objects.size() < this->m_scan_threshold) {
     return;
   }
@@ -113,7 +106,7 @@ template <typename T>
 bool hazard_pointers<T>::can_reclaim(hazard_pointers::pointer retired) const {
   for (const auto& thread_block : this->m_thread_blocks) {
     for (std::size_t hp = 0; hp < this->m_num_hazard_pointers; ++hp) {
-      if (thread_block.hazard_pointers[hp].load() == retired) {
+      if (thread_block.hazard_pointers[hp].ptr.load() == retired) {
         return false;
       }
     }

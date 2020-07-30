@@ -27,14 +27,8 @@ public:
   /** clears one hazard pointer for the thread with the given id */
   void clear_one(std::size_t thread_id, std::size_t hp);
 
-  pointer protect(
-      const std::atomic<pointer>& atomic,
-      std::size_t thread_id,
-      std::size_t hp
-    );
-
+  pointer protect(const std::atomic<pointer>& atomic, std::size_t thread_id, std::size_t hp);
   pointer protect_ptr(pointer ptr, std::size_t thread_id, std::size_t hp);
-
   void retire(pointer ptr, std::size_t thread_id);
 
   hazard_pointers(const hazard_pointers&)            = delete;
@@ -46,14 +40,18 @@ private:
   static constexpr std::size_t MAX_HAZARD_POINTERS = 4;
   static constexpr std::size_t DEFAULT_SCAN_THRESHOLD = 1;
 
-  using hazard_pointer_array_t = std::array<std::atomic<pointer>, MAX_HAZARD_POINTERS>;
+  struct alignas(CACHE_LINE_ALIGN) hazard_ptr {
+    std::atomic<pointer> ptr;
+  };
+
+  using hazard_ptr_arr_t = std::array<hazard_ptr, MAX_HAZARD_POINTERS>;
 
   struct thread_block_t {
     thread_block_t() = default;
     thread_block_t(thread_block_t&&) noexcept = default;
 
     alignas(CACHE_LINE_ALIGN) std::vector<pointer> retired_objects{};
-    alignas(CACHE_LINE_ALIGN) hazard_pointer_array_t hazard_pointers{};
+    alignas(CACHE_LINE_ALIGN) hazard_ptr_arr_t hazard_pointers{};
   };
 
   bool can_reclaim(pointer retired) const;

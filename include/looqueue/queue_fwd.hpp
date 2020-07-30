@@ -82,8 +82,8 @@ private:
   /** attempts to advance the head node to its successor if there is one */
   __attribute__ ((noinline))
   detail::advance_head_res_t try_advance_head(marked_ptr_t curr, node_t* head, node_t* tail);
-  /** attempts to advance the tail node to its successor if there is one or attempts to append a
-   *  new node with `elem` stored in the first slot otherwise */
+  /** attempts to advance the tail node to its successor if there is one or attempts
+   *  to append a new node with `elem` stored in the first slot otherwise */
   __attribute__ ((noinline))
   detail::advance_tail_res_t try_advance_tail(pointer elem, node_t* tail);
 

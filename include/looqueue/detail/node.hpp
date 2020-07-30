@@ -13,17 +13,17 @@
 namespace loo {
 template <typename T>
 struct queue<T>::node_t {
-  using slot_array_t = std::array<queue::atomic_slot_t, queue::NODE_SIZE>;
+  using slot_array_t    = std::array<queue::atomic_slot_t, queue::NODE_SIZE>;
   using atomic_uint32_t = std::atomic<std::uint32_t>;
   using atomic_uint8_t  = std::atomic<std::uint8_t>;
 
   struct alignas(CACHE_LINE_ALIGN) ctrl_block_t {
     /** high 16 bit: final observed count of slow-path enqueue ops, low 16 bit: current count */
-    atomic_uint32_t      tail_cnt{ 0 };
+    atomic_uint32_t tail_cnt{ 0 };
     /** high 16 bit: final observed count of slow-path dequeue ops, low 16 bit: current count */
-    atomic_uint32_t      head_cnt{ 0 };
+    atomic_uint32_t head_cnt{ 0 };
     /** bit mask for storing current reclamation status (all 3 bits set = node can be reclaimed) */
-    atomic_uint8_t       reclaim_flags{ 0 };
+    atomic_uint8_t  reclaim_flags{ 0 };
   };
 
   /** struct members */
@@ -44,6 +44,14 @@ struct queue<T>::node_t {
     ELEM_MASK  = ~STATE_MASK,
   };
 
+  /** ref-count constants */
+  enum counter_flags_t : std::uint32_t {
+    /** bit-shift for accessing the high 16 bits (the final completed operations count) */
+    SHIFT = 16,
+    /** mask for the lower 16 bit (the current completed operations count) */
+    MASK  = 0xFFFF,
+  };
+
   /** reclaim flag constants */
   enum reclaim_flags_t : std::uint8_t {
     /** all slots have been visited & determined to be consumed */
@@ -52,14 +60,6 @@ struct queue<T>::node_t {
     ENQ = 0b010,
     /** all slow path dequeue ops have completed and the node can't be observed by new operations */
     DEQ = 0b100,
-  };
-
-  /** ref-count constants */
-  enum counter_flags_t : std::uint32_t {
-    /** bit-shift for accessing the high 16 bits (the final completed operations count) */
-    SHIFT = 16,
-    /** mask for the lower 16 bit (the current completed operations count) */
-    MASK  = 0xFFFF,
   };
 
   /** returns true if a slot has been either consumed or abandoned */
@@ -73,8 +73,8 @@ struct queue<T>::node_t {
     return (slot & slot_flags_t::READER) != 0;
   }
 
-  /** allocates a new node aligned to `NODE_ALIGN` */
-  void* operator new(std::size_t size) {
+  static constexpr std::size_t alloc_size() {
+    const auto size = sizeof(node_t);
     const auto rem = size % queue::NODE_ALIGN;
     auto mul = size / queue::NODE_ALIGN;
 
@@ -82,8 +82,14 @@ struct queue<T>::node_t {
       mul += 1;
     }
 
+    return queue::NODE_ALIGN * mul;
+  }
+
+  /** allocates a new node aligned to `NODE_ALIGN` */
+  void* operator new(std::size_t) {
     // aligned_alloc requires size to be a multiple of the alignment
-    auto ptr = std::aligned_alloc(queue::NODE_ALIGN, queue::NODE_ALIGN * mul);
+    constexpr auto size = alloc_size();
+    auto ptr = std::aligned_alloc(queue::NODE_ALIGN, size);
     if (ptr == nullptr) {
       throw std::bad_alloc();
     }
@@ -92,7 +98,7 @@ struct queue<T>::node_t {
   }
 
   void operator delete(void* ptr) {
-    free(ptr);
+    ::operator delete(ptr);
   }
 
   /** constructor (default) */
@@ -108,7 +114,7 @@ struct queue<T>::node_t {
   }
 
   /** checks if all slots are consumed before attempting reclamation */
-  void try_reclaim(const std::uint64_t start_idx) {
+  void try_reclaim(std::uint64_t start_idx) {
     // iterate all slots beginning at `start_idx`
     for (auto idx = start_idx; idx < queue::NODE_SIZE; ++idx) {
       auto& slot = this->slots[idx];
@@ -140,7 +146,6 @@ struct queue<T>::node_t {
    *  be reclaimed, if the other 2 bits have already been set. */
   void incr_enqueue_count(std::uint64_t final_count = 0) {
     constexpr std::uint8_t EXPECTED_FLAGS = reclaim_flags_t::ARR | reclaim_flags_t::DEQ;
-
     assert(final_count < std::numeric_limits<std::uint16_t>::max());
     const auto counts = final_count == 0
         ? incr_count(this->ctrl.tail_cnt)
@@ -154,7 +159,6 @@ struct queue<T>::node_t {
    * be reclaimed, if the other 2 bits have already been set. */
   void incr_dequeue_count(std::uint64_t final_count = 0) {
     constexpr std::uint8_t EXPECTED_FLAGS = reclaim_flags_t::ENQ | reclaim_flags_t::ARR;
-
     assert(final_count < std::numeric_limits<std::uint16_t>::max());
     const auto counts = final_count == 0
         ? incr_count(this->ctrl.head_cnt)

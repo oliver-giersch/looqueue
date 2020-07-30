@@ -360,11 +360,11 @@ void bench_random(
     // spawns threads and performs pairwise enqueue and dequeue operations
     for (std::size_t thread = 0; thread < threads; ++thread) {
       thread_handles.emplace_back(std::thread([&, thread] {
-        bench::pin_current_thread(thread);
-
-        std::random_device device;
-        std::mt19937 rng(device());
+        //std::random_device device;
+        std::mt19937 rng;
         std::uniform_int_distribution<unsigned> dist(0, 100);
+
+        bench::pin_current_thread(thread);
 
         auto&& queue_ref = make_queue_ref(*queue, thread);
 
@@ -372,7 +372,8 @@ void bench_random(
         barrier.wait();
 
         for (std::size_t op = 0; op < ops_per_threads; ++op) {
-          if (dist(rng) <= 75) {
+          const auto rand = dist(rng);
+          if (rand <= 75) {
             queue_ref.enqueue(&thread_ids.at(thread));
           } else {
             auto elem = queue_ref.dequeue();

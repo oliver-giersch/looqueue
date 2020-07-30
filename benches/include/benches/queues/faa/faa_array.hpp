@@ -12,9 +12,7 @@
 
 namespace faa {
 template <typename T>
-queue<T>::queue(std::size_t max_threads) :
-  m_hazard_pointers{ max_threads, 1 }
-{
+queue<T>::queue(std::size_t max_threads) : m_hazard_ptrs{ max_threads, 1 } {
   auto sentinel = new node_t();
   std::atomic_init(&this->m_head, sentinel);
   std::atomic_init(&this->m_tail, sentinel);
@@ -37,7 +35,7 @@ void queue<T>::enqueue(queue::pointer elem, std::size_t thread_id) {
   }
 
   while (true) {
-    const auto tail = this->m_hazard_pointers.protect_ptr(
+    const auto tail = this->m_hazard_ptrs.protect_ptr(
         this->m_tail.load(),
         thread_id,
         HP_ENQ_TAIL
@@ -49,15 +47,14 @@ void queue<T>::enqueue(queue::pointer elem, std::size_t thread_id) {
 
     const auto idx = tail->enq_idx.fetch_add(1);
     if (likely(idx < NODE_SIZE)) {
-      // fast path
-      pointer null = nullptr;
-      if (likely(tail->slots[idx].compare_exchange_strong(null, elem))) {
+      // ** fast path ** write pointer directly into the reserved slot
+      if (likely(tail->cas_slot_at(idx, nullptr, elem))) {
         break;
       }
 
       continue;
     } else {
-      // slow path
+      // ** slow path ** append new tail node or update the tail pointer
       if (tail != this->m_tail.load()) {
         continue;
       }
@@ -69,6 +66,7 @@ void queue<T>::enqueue(queue::pointer elem, std::size_t thread_id) {
           this->cas_tail(tail, node);
           break;
         }
+
         delete node;
       } else {
         this->cas_tail(tail, next);
@@ -76,13 +74,13 @@ void queue<T>::enqueue(queue::pointer elem, std::size_t thread_id) {
     }
   }
 
-  this->m_hazard_pointers.clear_one(thread_id, HP_ENQ_TAIL);
+  this->m_hazard_ptrs.clear_one(thread_id, HP_ENQ_TAIL);
 }
 
 template <typename T>
 typename queue<T>::pointer queue<T>::dequeue(std::size_t thread_id) {
   while (true) {
-    auto head = this->m_hazard_pointers.protect_ptr(
+    auto head = this->m_hazard_ptrs.protect_ptr(
         this->m_head.load(),
         thread_id,
         HP_DEQ_HEAD
@@ -98,41 +96,41 @@ typename queue<T>::pointer queue<T>::dequeue(std::size_t thread_id) {
 
     const auto idx = head->deq_idx.fetch_add(1);
     if (likely(idx < NODE_SIZE)) {
-      // fast path
+      // ** fast path ** read the pointer from the reserved slot
       auto res = head->slots[idx].exchange(reinterpret_cast<pointer>(TAKEN));
       if (likely(res != nullptr)) {
-        this->m_hazard_pointers.clear_one(thread_id, HP_DEQ_HEAD);
+        this->m_hazard_ptrs.clear_one(thread_id, HP_DEQ_HEAD);
         return res;
       }
 
       continue;
     } else {
-      // slow path
+      // ** slow path ** advance the head pointer to the next node
       const auto next = head->next.load();
       if (next == nullptr) {
         break;
       }
 
       if (this->cas_head(head, next)) {
-        this->m_hazard_pointers.retire(head, thread_id);
+        this->m_hazard_ptrs.retire(head, thread_id);
       }
 
       continue;
     }
   }
 
-  this->m_hazard_pointers.clear_one(thread_id, HP_DEQ_HEAD);
+  this->m_hazard_ptrs.clear_one(thread_id, HP_DEQ_HEAD);
   return nullptr;
 }
 
 template <typename T>
-bool queue<T>::cas_head(queue::node_t *curr, queue::node_t *next) {
-  return this->m_head.compare_exchange_strong(curr, next);
+bool queue<T>::cas_head(queue::node_t* expected, queue::node_t* desired) {
+  return this->m_head.compare_exchange_strong(expected, desired);
 }
 
 template <typename T>
-bool queue<T>::cas_tail(queue::node_t *curr, queue::node_t *next) {
-  return this->m_tail.compare_exchange_strong(curr, next);
+bool queue<T>::cas_tail(queue::node_t* expected, queue::node_t* desired) {
+  return this->m_tail.compare_exchange_strong(expected, desired);
 }
 }
 

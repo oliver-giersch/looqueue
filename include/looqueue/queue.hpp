@@ -2,9 +2,9 @@
 #define LOO_QUEUE_QUEUE_HPP
 
 #if defined(__GNUG__) || defined(__clang__) || defined(__INTEL_COMPILER)
-#define likely(cond)   __builtin_expect ((cond), 1)
+#define likely(cond) __builtin_expect ((cond), 1)
 #else
-#define likely(cond)   cond
+#define likely(cond) cond
 #endif
 
 #include <stdexcept>
@@ -49,8 +49,8 @@ void queue<T>::enqueue(queue::pointer elem) {
     const auto [tail, idx] = curr.decompose();
 
     if (likely(idx < queue::NODE_SIZE)) {
-      // ** fast path ** write access to the slot at tail.idx was uniquely reserved
-      // write the `elem` bits into the slot (unique access ensures this is done exactly once)
+      // ** fast path ** write access to the slot at tail.idx was uniquely reserved write the `elem`
+      // bits into the slot (unique access ensures this is done exactly once)
       const auto state = tail->slots[idx].fetch_add(reinterpret_cast<queue::slot_t>(elem), RELEASE);
       if (likely(state <= node_t::slot_flags_t::RESUME)) {
         // no READ bit is set, RESUME may or may not be set - the element was successfully inserted
