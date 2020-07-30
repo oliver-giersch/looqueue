@@ -17,18 +17,23 @@ struct queue<T>::node_t {
   using atomic_uint32_t = std::atomic<std::uint32_t>;
   using atomic_uint8_t  = std::atomic<std::uint8_t>;
 
+  struct alignas(CACHE_LINE_ALIGN) ctrl_block_t {
+    /** high 16 bit: final observed count of slow-path enqueue ops, low 16 bit: current count */
+    atomic_uint32_t      tail_cnt{ 0 };
+    /** high 16 bit: final observed count of slow-path dequeue ops, low 16 bit: current count */
+    atomic_uint32_t      head_cnt{ 0 };
+    /** bit mask for storing current reclamation status (all 3 bits set = node can be reclaimed) */
+    atomic_uint8_t       reclaim_flags{ 0 };
+  };
+
   /** struct members */
 
-  /** high 16 bit: final observed count of slow-path enqueue ops, low 16 bit: current count */
-  atomic_uint32_t      tail_cnt{ 0 };
-  /** array of individual slots for storing elements + state bits */
-  slot_array_t         slots;
-  /** high 16 bit: final observed count of slow-path dequeue ops, low 16 bit: current count */
-  atomic_uint32_t      head_cnt{ 0 };
   /** pointer to successor node */
   std::atomic<node_t*> next{ nullptr };
-  /** bit mask for storing current reclamation status (all 3 bits set = node can be reclaimed) */
-  atomic_uint8_t       reclaim_flags{ 0 };
+  /** array of individual slots for storing elements + state bits */
+  slot_array_t slots;
+  /** control block for memory reclamation */
+  ctrl_block_t ctrl;
 
   /** slot flag constants */
   enum slot_flags_t : std::uint64_t {
@@ -120,7 +125,7 @@ struct queue<T>::node_t {
 
     // set the ARR bit, since all slots have been visited, so all fast path enqueue and dequeue
     // ops must have finished and are no longer accessing the node
-    const auto flags = this->reclaim_flags.fetch_add(reclaim_flags_t::ARR, ACQ_REL);
+    const auto flags = this->ctrl.reclaim_flags.fetch_add(reclaim_flags_t::ARR, ACQ_REL);
 
     if (start_idx == 0) return;
 
@@ -138,8 +143,8 @@ struct queue<T>::node_t {
 
     assert(final_count < std::numeric_limits<std::uint16_t>::max());
     const auto counts = final_count == 0
-        ? incr_count(this->tail_cnt)
-        : incr_count_final(this->tail_cnt, static_cast<std::uint16_t>(final_count));
+        ? incr_count(this->ctrl.tail_cnt)
+        : incr_count_final(this->ctrl.tail_cnt, static_cast<std::uint16_t>(final_count));
 
     this->try_reclaim_after_incr(counts, reclaim_flags_t::ENQ, EXPECTED_FLAGS);
   }
@@ -152,8 +157,8 @@ struct queue<T>::node_t {
 
     assert(final_count < std::numeric_limits<std::uint16_t>::max());
     const auto counts = final_count == 0
-        ? incr_count(this->head_cnt)
-        : incr_count_final(this->head_cnt, static_cast<std::uint16_t>(final_count));
+        ? incr_count(this->ctrl.head_cnt)
+        : incr_count_final(this->ctrl.head_cnt, static_cast<std::uint16_t>(final_count));
 
     this->try_reclaim_after_incr(counts, reclaim_flags_t::DEQ, EXPECTED_FLAGS);
   }
@@ -190,7 +195,7 @@ private:
    *  `expected_flags` */
   void try_reclaim_after_incr(counts_t counts, std::uint8_t flag_bit, std::uint8_t expected_flags) {
     if (counts.curr_count == counts.final_count) {
-      const auto flags = this->reclaim_flags.fetch_add(flag_bit, ACQ_REL);
+      const auto flags = this->ctrl.reclaim_flags.fetch_add(flag_bit, ACQ_REL);
       if (flags == expected_flags) {
         delete this;
       }
