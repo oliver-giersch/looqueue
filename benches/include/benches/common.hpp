@@ -29,6 +29,7 @@ std::size_t  parse_size_str(const std::string& size);
 std::size_t  parse_runs_str(const std::string& runs);
 /** pins the thread with the given id to the core with the same number */
 void pin_current_thread(std::size_t thread_id);
+void spin_for_ns(std::size_t ns);
 }
 
 #endif /* LOO_QUEUE_BENCHES_COMMON_HPP */

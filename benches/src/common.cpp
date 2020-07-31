@@ -1,11 +1,28 @@
 #include "benches/common.hpp"
 
+#include <chrono>
 #include <iostream>
 #include <stdexcept>
 
 #include <pthread.h>
 
 namespace bench {
+namespace detail {
+std::size_t measure_ns_per_iteration() {
+  using nanosecs = std::chrono::nanoseconds;
+  constexpr auto iters = 1000;
+
+  const auto start = std::chrono::high_resolution_clock::now();
+  for (volatile auto i = 0; i < iters; ++i) {}
+  const auto end = std::chrono::high_resolution_clock::now();
+
+  const nanosecs dur = end - start;
+  const auto ns_per_iter = dur.count() / iters;
+
+  return ns_per_iter == 0 ? 1 : ns_per_iter;
+}
+}
+
 queue_type_t parse_queue_str(const std::string& queue) {
   if (queue == "lcr") {
     return queue_type_t::LCR;
@@ -69,5 +86,11 @@ void pin_current_thread(std::size_t thread_id) {
   if (res != 0) {
     throw std::system_error(res, std::generic_category(), "failed to pin thread");
   }
+}
+
+void spin_for_ns(std::size_t ns) {
+  static const auto NS_PER_ITER = detail::measure_ns_per_iteration();
+
+  for (volatile auto i = 0; i < ns * NS_PER_ITER; ++i) {}
 }
 }

@@ -40,7 +40,7 @@ private:
   static constexpr std::size_t MAX_HAZARD_POINTERS = 4;
   static constexpr std::size_t DEFAULT_SCAN_THRESHOLD = 1;
 
-  struct alignas(CACHE_LINE_ALIGN) hazard_ptr {
+  struct alignas(CACHE_LINE_SIZE) hazard_ptr {
     std::atomic<pointer> ptr;
   };
 

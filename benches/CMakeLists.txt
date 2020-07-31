@@ -37,6 +37,7 @@ if (CASCADE_LAKE)
     set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -march=cascadelake -mtune=cascadelake")
 endif()
 
+# bench throughput
 add_executable(bench_throughput
         src/bench_throughput.cpp
         src/common.cpp)
@@ -56,6 +57,17 @@ endif()
 if(STATIC)
     target_link_libraries(bench_throughput PRIVATE -static -static-libgcc -static-libstdc++)
 endif()
+
+# bench read heavy
+add_executable(bench_reads
+        src/bench_reads.cpp
+        src/common.cpp)
+target_include_directories(bench_reads PRIVATE include)
+target_compile_definitions(bench_reads PRIVATE LOO_USE_SEQ_CST)
+target_link_libraries(bench_reads PRIVATE
+        looqueue
+        ${Boost_LIBRARIES}
+        Threads::Threads)
 
 add_executable(test_lcrq src/test_lcrq.cpp)
 target_include_directories(test_lcrq PRIVATE include)

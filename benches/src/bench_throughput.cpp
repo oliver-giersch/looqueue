@@ -360,8 +360,8 @@ void bench_random(
     // spawns threads and performs pairwise enqueue and dequeue operations
     for (std::size_t thread = 0; thread < threads; ++thread) {
       thread_handles.emplace_back(std::thread([&, thread] {
-        //std::random_device device;
-        std::mt19937 rng;
+        std::random_device device;
+        std::mt19937 rng(device());
         std::uniform_int_distribution<unsigned> dist(0, 100);
 
         bench::pin_current_thread(thread);
