@@ -165,7 +165,7 @@ void bench_reads(
     thread_handles.reserve(threads);
 
     auto&& queue_ref = make_queue_ref(*queue, 0);
-    for (std::size_t op = 0; op < total_ops / 2; ++op) {
+    for (std::size_t op = 0; op < (3 * total_ops) / 4; ++op) {
       queue_ref.enqueue(&thread_ids.at(0));
     }
 
@@ -217,9 +217,9 @@ void reader_thread(R queue_ref, std::size_t ops_per_thread) {
   for (std::size_t op = 0; op < ops_per_thread; ++op) {
     auto elem = queue_ref.dequeue();
     if (elem == nullptr) {
-      bench::spin_for_ns(75);
+      bench::spin_for_ns(150);
     } else {
-      bench::spin_for_ns(50);
+      bench::spin_for_ns(100);
     }
   }
 }
@@ -228,6 +228,6 @@ template <typename R>
 void writer_thread(R queue_ref, std::size_t ops_per_thread, std::size_t* thread_id) {
   for (std::size_t op = 0; op < ops_per_thread; ++op) {
     queue_ref.enqueue(thread_id);
-    bench::spin_for_ns(25);
+    bench::spin_for_ns(50);
   }
 }

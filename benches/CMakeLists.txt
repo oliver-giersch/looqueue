@@ -48,16 +48,6 @@ target_link_libraries(bench_throughput PRIVATE
         ${Boost_LIBRARIES}
         Threads::Threads)
 
-if(ALLOCATOR MATCHES "mimalloc")
-    target_link_libraries(bench_throughput PRIVATE mimalloc-static)
-elseif(ALLOCATOR MATCHES "rpmalloc")
-    target_link_libraries(bench_throughput PRIVATE rpmalloc)
-endif()
-
-if(STATIC)
-    target_link_libraries(bench_throughput PRIVATE -static -static-libgcc -static-libstdc++)
-endif()
-
 # bench read heavy
 add_executable(bench_reads
         src/bench_reads.cpp
@@ -68,6 +58,19 @@ target_link_libraries(bench_reads PRIVATE
         looqueue
         ${Boost_LIBRARIES}
         Threads::Threads)
+
+if(ALLOCATOR MATCHES "mimalloc")
+    target_link_libraries(bench_throughput PRIVATE mimalloc-static)
+    target_link_libraries(bench_reads PRIVATE mimalloc-static)
+elseif(ALLOCATOR MATCHES "rpmalloc")
+    target_link_libraries(bench_throughput PRIVATE rpmalloc)
+    target_link_libraries(bench_reads PRIVATE rpmalloc)
+endif()
+
+if(STATIC)
+    target_link_libraries(bench_throughput PRIVATE -static -static-libgcc -static-libstdc++)
+    target_link_libraries(bench_reads PRIVATE -static -static-libgcc -static-libstdc++)
+endif()
 
 add_executable(test_lcrq src/test_lcrq.cpp)
 target_include_directories(test_lcrq PRIVATE include)
