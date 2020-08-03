@@ -45,16 +45,39 @@ queue_type_t parse_queue_str(const std::string& queue) {
   );
 }
 
-std::size_t parse_size_str(const std::string& size) {
-  constexpr const char* ERR_MSG =
-      "argument 'size' must contain an integer number between 1 and 100 followed by either K or M";
+bench_type_t parse_bench_str(const std::string& bench) {
+  if (bench == "pairs") {
+    return bench_type_t::PAIRS;
+  }
 
-  if (size.size() <= 1) {
+  if (bench == "bursts") {
+    return bench_type_t::BURSTS;
+  }
+
+  if (bench == "macro") {
+    return bench_type_t::READS;
+  }
+
+  if (bench == "writes") {
+    return bench_type_t::WRITES;
+  }
+
+  throw std::invalid_argument(
+      "argument `bench` must be 'pairs', 'bursts', 'macro' or 'writes'"
+  );
+}
+
+std::size_t parse_total_ops_str(const std::string& total_ops) {
+  constexpr const char* ERR_MSG =
+      "argument 'total_ops' must contain an integer number between 1 and 100 "
+      "followed by either K or M";
+
+  if (total_ops.size() <= 1) {
     throw std::invalid_argument(ERR_MSG);
   }
 
-  const auto sub = size.substr(0, size.size() - 1);
-  const auto fac = size.back();
+  const auto sub = total_ops.substr(0, total_ops.size() - 1);
+  const auto fac = total_ops.back();
 
   auto val = std::stoi(sub);
   if (val <= 0 || val > 100) {

@@ -1,9 +1,9 @@
 #!/bin/sh
 
-#SBATCH --job-name=lcr_micro
+#SBATCH --job-name=loo_macro
 #SBATCH --time 01:00:00
 #SBATCH --nodes=1
 #SBATCH --partition=standard96:test
 #SBATCH -L ansys:1
 
-./micro/run_pairs_and_bursts.sh lcr 50M
+./reads/run_reads_and_writes.sh loo 50M

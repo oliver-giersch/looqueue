@@ -1,3 +1,5 @@
+#!/bin/sh
+
 queue=$1
 size=$2
 
