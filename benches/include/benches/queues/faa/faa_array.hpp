@@ -35,12 +35,7 @@ void queue<T>::enqueue(queue::pointer elem, std::size_t thread_id) {
   }
 
   while (true) {
-    const auto tail = this->m_hazard_ptrs.protect_ptr(
-        this->m_tail.load(),
-        thread_id,
-        HP_ENQ_TAIL
-    );
-
+    const auto tail = this->m_hazard_ptrs.protect_ptr(this->m_tail.load(), thread_id, HP_ENQ_TAIL);
     if (tail != this->m_tail.load()) {
       continue;
     }

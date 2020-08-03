@@ -174,7 +174,7 @@ void run_benches(
     for (auto threads : THREADS_MACRO) {
       // aborts if hyper-threads would be used (assuming 2 HT per core)
       if (threads > std::thread::hardware_concurrency() / 2) {
-        //break;
+        break;
       }
 
       bench_reads_or_writes<Q, R>(queue_name, bench_type, total_ops, runs, threads, make_queue_ref);
@@ -195,11 +195,11 @@ void bench_pairwise(
   // pre-allocates a vector for storing the elements enqueued by each thread;
   std::vector<std::size_t> thread_ids{};
   thread_ids.reserve(threads);
-  for (std::size_t thread = 0; thread < threads; ++thread) {
+  for (auto thread = 0; thread < threads; ++thread) {
     thread_ids.push_back(thread);
   }
 
-  for (std::size_t run = 0; run < runs; ++run) {
+  for (auto run = 0; run < runs; ++run) {
     auto queue = std::make_unique<Q>();
     boost::barrier barrier{ static_cast<unsigned>(threads + 1) };
 
@@ -208,7 +208,7 @@ void bench_pairwise(
     thread_handles.reserve(threads);
 
     // spawns threads and performs pairwise enqueue and dequeue operations
-    for (std::size_t thread = 0; thread < threads; ++thread) {
+    for (auto thread = 0; thread < threads; ++thread) {
       thread_handles.emplace_back(std::thread([&, thread] {
         bench::pin_current_thread(thread);
 
@@ -217,7 +217,7 @@ void bench_pairwise(
         // all threads synchronize at this barrier before starting
         barrier.wait();
 
-        for (std::size_t op = 0; op < ops_per_threads; ++op) {
+        for (auto op = 0; op < ops_per_threads; ++op) {
           if (op % 2 == 0) {
             queue_ref.enqueue(&thread_ids.at(thread));
           } else {
@@ -269,11 +269,11 @@ void bench_bursts(
   // pre-allocates a vector for storing the elements enqueued by each thread;
   std::vector<std::size_t> thread_ids{};
   thread_ids.reserve(threads);
-  for (std::size_t thread = 0; thread < threads; ++thread) {
+  for (auto thread = 0; thread < threads; ++thread) {
     thread_ids.push_back(thread);
   }
 
-  for (std::size_t run = 0; run < runs; ++run) {
+  for (auto run = 0; run < runs; ++run) {
     auto queue = std::make_unique<Q>();
     boost::barrier barrier{ static_cast<unsigned>(threads + 1) };
 
@@ -282,7 +282,7 @@ void bench_bursts(
     thread_handles.reserve(threads);
 
     // spawns threads and performs pairwise enqueue and dequeue operations
-    for (std::size_t thread = 0; thread < threads; ++thread) {
+    for (auto thread = 0; thread < threads; ++thread) {
       thread_handles.emplace_back(std::thread([&, thread] {
         bench::pin_current_thread(thread);
 
@@ -291,7 +291,7 @@ void bench_bursts(
         // (1) all threads synchronize at this barrier before starting
         barrier.wait();
 
-        for (std::size_t op = 0; op < ops_per_threads; ++op) {
+        for (auto op = 0; op < ops_per_threads; ++op) {
           queue_ref.enqueue(&thread_ids.at(thread));
         }
 
@@ -299,7 +299,7 @@ void bench_bursts(
         // respective enqueue burst
         barrier.wait();
 
-        for (std::size_t op = 0; op < ops_per_threads; ++op) {
+        for (auto op = 0; op < ops_per_threads; ++op) {
           auto elem = queue_ref.dequeue();
           if (elem != nullptr && (elem < &thread_ids.front() || elem > &thread_ids.back())) {
             throw std::runtime_error(
@@ -352,16 +352,20 @@ void bench_reads_or_writes(
     std::size_t             threads,
     make_queue_ref_fn<Q, R> make_queue_ref
 ) {
+  if (threads % 4 != 0) {
+    throw std::invalid_argument("argument `threads` must be multiple of four");
+  }
+
   const auto ops_per_thread = total_ops / threads;
 
-  // pre-allocates a vector for storing the elements enqueued by each thread;
+  // pre-allocates a vector for storing the elements enqueued by each thread
   std::vector<std::size_t> thread_ids{};
   thread_ids.reserve(threads);
-  for (std::size_t thread = 0; thread < threads; ++thread) {
+  for (auto thread = 0; thread < threads; ++thread) {
     thread_ids.push_back(thread);
   }
 
-  for (std::size_t run = 0; run < runs; ++run) {
+  for (auto run = 0; run < runs; ++run) {
     auto queue = std::make_unique<Q>();
     boost::barrier barrier{ static_cast<unsigned>(threads + 1) };
 
@@ -369,24 +373,21 @@ void bench_reads_or_writes(
     std::vector<std::thread> thread_handles{};
     thread_handles.reserve(threads);
 
-    // for read-heavy benchmarks, seed the queue with large number of values before
-    // starting the benchmark
+    // for read-heavy benchmarks, seed the queue with large number of values
+    // before starting the benchmark
     if (bench_type == bench::bench_type_t::READS) {
       auto&& queue_ref = make_queue_ref(*queue, 0);
-      for (std::size_t op = 0; op < (3 * total_ops) / 4; ++op) {
+      for (auto op = 0; op < (3 * total_ops) / 4; ++op) {
         queue_ref.enqueue(&thread_ids.at(0));
       }
     }
 
     // spawns threads and performs the required operations
-    for (std::size_t thread = 0; thread < threads; ++thread) {
+    for (auto thread = 0; thread < threads; ++thread) {
       thread_handles.emplace_back(std::thread([&, thread] {
         bench::pin_current_thread(thread);
 
         auto&& queue_ref = make_queue_ref(*queue, thread);
-
-        // all threads synchronize at this barrier before starting
-        barrier.wait();
 
         const auto writer_thread = [&]() {
           for (auto op = 0; op < ops_per_thread; ++op) {
@@ -408,6 +409,9 @@ void bench_reads_or_writes(
             }
           }
         };
+
+        // all threads synchronize at this barrier before starting
+        barrier.wait();
 
         switch (bench_type) {
           case bench::bench_type_t::WRITES:

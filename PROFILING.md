@@ -31,45 +31,45 @@ node-stores \
 
 #### `loo::queue`
 
-| operation         | instruction | samples | samples (normalized) |
-| ----------------- | ----------- | ------- | -------------------- |
-| FAA(1) [tail+idx] | lock xadd   | 186.9k  | 62.3k                |
-| FAA (OR) slot     | lock xadd   | 14.3k   | 4.8k                 |
-| SUM               |             | 201.2k  | 67.1k                |
+| operation          | instruction | samples | samples (normalized) |
+| ------------------ | ----------- | ------- | -------------------- |
+| FAA (1) [tail+idx] | lock xadd   | 186.9k  | 62.3k                |
+| FAA (OR) slot      | lock xadd   | 14.3k   | 4.8k                 |
+| SUM                |             | 201.2k  | 67.1k                |
 
 #### `faa::queue`:
 
-| operation      | instruction  | samples | samples (normalized) |
-| -------------- | ------------ | ------- | -------------------- |
-| HP acquire     | xchg         | 14.7k   | 4.9k                 |
-| FAA(1) enq_idx | lock xadd    | 168.7k  | 56.2k                |
-| CXCHG slot     | lock cmpxchg | 22.7k   | 7.6k                 |
-| HP release     | mov          | 1.3k    | 0.4k                 |
-| SUM            |              | 207.4k  | 69.1k                |
+| operation       | instruction  | samples | samples (normalized) |
+| -------------- -| ------------ | ------- | -------------------- |
+| HP acquire      | xchg         | 14.7k   | 4.9k                 |
+| FAA (1) enq_idx | lock xadd    | 168.7k  | 56.2k                |
+| CXCHG slot      | lock cmpxchg | 22.7k   | 7.6k                 |
+| HP release      | mov          | 1.3k    | 0.4k                 |
+| SUM             |              | 207.4k  | 69.1k                |
 
 ### dequeue (25%)
 
 #### `loo::queue`
 
-| operation         | instruction | samples |
-| ----------------- | ----------- | ------- |
-| LOAD [tail+idx]   | mov         | 57.1k   |
-| FAA(0) [head+idx] | lock xadd   | 4.2k    |
-| FAA(1) [head+idx] | lock xadd   | 5.5k    |
-| FAA (OR) slot     | lock xadd   | 7.4k    |
-| SUM               |             | 74.2k   |
+| operation          | instruction | samples |
+| ------------------ | ----------- | ------- |
+| LOAD [tail+idx]    | mov         | 57.1k   |
+| FAA (0) [head+idx] | lock xadd   | 4.2k    |
+| FAA (1) [head+idx] | lock xadd   | 5.5k    |
+| FAA (OR) slot      | lock xadd   | 7.4k    |
+| SUM                |             | 74.2k   |
 
 #### `faa::queue`
 
-| operation      | instruction | samples |
-| -------------- | ----------- | ------- |
-| HP acquire     | xchg        | 1.5k    |
-| LOAD deq_idx   | mov         | 11.6k   |
-| LOAD enq_idx   | mov         | 0.8k    |
-| FAA(1) deq_idx | lock xadd   | 8.8k    |
-| XCHG slot      | xchg        | 16.7k   |
-| HP release     | mov         | 0.5k    |
-| SUM            |             | 39.6k   | 
+| operation       | instruction | samples |
+| --------------- | ----------- | ------- |
+| HP acquire      | xchg        | 1.5k    |
+| LOAD deq_idx    | mov         | 11.6k   |
+| LOAD enq_idx    | mov         | 0.8k    |
+| FAA (1) deq_idx | lock xadd   | 8.8k    |
+| XCHG slot       | xchg        | 16.7k   |
+| HP release      | mov         | 0.5k    |
+| SUM             |             | 39.6k   | 
 
 ### Reasoning
 

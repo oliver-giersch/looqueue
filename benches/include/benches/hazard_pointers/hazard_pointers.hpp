@@ -8,12 +8,13 @@
 namespace memory {
 template<typename T>
 hazard_pointers<T>::hazard_pointers(
-    const std::size_t num_threads,
-    const std::size_t num_hazard_pointers,
-    const std::size_t scan_threshold
+    std::size_t num_threads,
+    std::size_t num_hazard_pointers,
+    std::size_t scan_threshold
 ) : m_num_hazard_pointers{ num_hazard_pointers },
     m_scan_threshold{ scan_threshold },
-    m_thread_blocks{ num_threads } {
+    m_thread_blocks{ num_threads }
+{
   if (num_hazard_pointers > MAX_HAZARD_POINTERS) {
     throw std::invalid_argument("`num_hazard_pointers` must be <= 8");
   }
@@ -35,7 +36,7 @@ void hazard_pointers<T>::clear_one(std::size_t thread_id, std::size_t hp) {
 }
 
 template<typename T>
-void hazard_pointers<T>::clear(const std::size_t thread_id) {
+void hazard_pointers<T>::clear(std::size_t thread_id) {
   auto& thread_block = this->m_thread_blocks[thread_id];
   for (auto& hazard_ptr : thread_block.hazard_pointers) {
     hazard_ptr.ptr.store(nullptr, std::memory_order_relaxed);
