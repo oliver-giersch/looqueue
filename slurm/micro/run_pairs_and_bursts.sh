@@ -8,5 +8,5 @@ out_dir=$parent_dir/csv/$queue/$size/throughput
 
 mkdir -p $out_dir
 cd $parent_dir/cmake-build-remote-release/benches || exit
-./bench_throughput $queue pairs  $size 15 > ../$out_dir/pairs.csv
-./bench_throughput $queue bursts $size 15 > ../$out_dir/bursts.csv
+./bench_throughput $queue pairs  $size 15 > $out_dir/pairs.csv
+./bench_throughput $queue bursts $size 15 > $out_dir/bursts.csv

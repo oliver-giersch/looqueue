@@ -54,7 +54,7 @@ bench_type_t parse_bench_str(const std::string& bench) {
     return bench_type_t::BURSTS;
   }
 
-  if (bench == "macro") {
+  if (bench == "reads") {
     return bench_type_t::READS;
   }
 
@@ -63,7 +63,7 @@ bench_type_t parse_bench_str(const std::string& bench) {
   }
 
   throw std::invalid_argument(
-      "argument `bench` must be 'pairs', 'bursts', 'macro' or 'writes'"
+      "argument `bench` must be 'pairs', 'bursts', 'reads' or 'writes'"
   );
 }
 
