@@ -64,12 +64,6 @@ private:
   struct node_t;
   using marked_ptr_t = typename detail::marked_ptr_t<node_t, TAG_BITS>;
 
-  /** returns true if the queue is determined to be empty */
-  static bool is_empty(
-    typename marked_ptr_t::decomposed_t head,
-    typename marked_ptr_t::decomposed_t tail
-  );
-
   /** loops and attempts to CAS `expected` with `desired` until either the CAS succeeds
    *  or the loaded pointer value (failure case) no longer matches `old_node` */
   static bool bounded_cas_loop(
@@ -81,7 +75,7 @@ private:
 
   /** attempts to advance the head node to its successor if there is one */
   __attribute__ ((noinline))
-  detail::advance_head_res_t try_advance_head(marked_ptr_t curr, node_t* head, node_t* tail);
+  detail::advance_head_res_t try_advance_head(marked_ptr_t curr, node_t* head);
   /** attempts to advance the tail node to its successor if there is one or attempts
    *  to append a new node with `elem` stored in the first slot otherwise */
   __attribute__ ((noinline))

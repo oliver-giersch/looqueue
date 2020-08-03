@@ -2,9 +2,11 @@
 #define LOO_QUEUE_QUEUE_HPP
 
 #if defined(__GNUG__) || defined(__clang__) || defined(__INTEL_COMPILER)
-#define likely(cond) __builtin_expect ((cond), 1)
+#define   likely(cond) __builtin_expect ((cond), 1)
+#define unlikely(cond) __builtin_expect ((cond), 0)
 #else
-#define likely(cond) cond
+#define   likely(cond) cond
+#define unlikely(cond) cond
 #endif
 
 #include <stdexcept>
@@ -82,16 +84,15 @@ void queue<T>::enqueue(queue::pointer elem) {
 template <typename T>
 typename queue<T>::pointer queue<T>::dequeue() {
   while (true) {
-    // load head & tail for subsequent empty check
-    const auto tail = marked_ptr_t(this->m_tail.load(RELAXED)).decompose();
     // using a read-modify-write operation that does not actually modify the value acquires
     // ownership of the variable's cache-line, making the subsequent FAA potentially more
     // efficient (at least on x86)
     auto curr = marked_ptr_t(this->m_head.fetch_add(0, RELAXED));
-
-    // check if queue is empty BEFORE incrementing the dequeue index
-    if (queue::is_empty(curr.decompose(), tail)) {
-      return nullptr;
+    if (const auto head = curr.decompose(); unlikely(head.idx >= NODE_SIZE)) {
+      const auto tail = marked_ptr_t(this->m_tail.load(RELAXED)).decompose_ptr();
+      if (head.ptr == tail) {
+        return nullptr;
+      }
     }
 
     // increment the dequeue index, retrieve the head pointer and previous index
@@ -116,6 +117,11 @@ typename queue<T>::pointer queue<T>::dequeue() {
         return res;
       }
 
+      const auto tail = marked_ptr_t(this->m_tail.load(RELAXED)).decompose();
+      if (idx > tail.idx) {
+        return nullptr;
+      }
+
       continue;
     } else {
       // the first slow-path operation initiates the reclamation checks for the current node,
@@ -128,7 +134,7 @@ typename queue<T>::pointer queue<T>::dequeue() {
 
       // ** slow path ** the current head node has been fully consumed and must
       // be replaced by its successor, if there is one
-      switch (this->try_advance_head(curr, head, tail.ptr)) {
+      switch (this->try_advance_head(curr, head)) {
         case detail::advance_head_res_t::ADVANCED:    continue;
         case detail::advance_head_res_t::QUEUE_EMPTY: return nullptr;
       }
@@ -159,25 +165,16 @@ bool queue<T>::bounded_cas_loop(
   return true;
 }
 
-template <typename T>
-bool queue<T>::is_empty(
-  typename queue::marked_ptr_t::decomposed_t head,
-  typename queue::marked_ptr_t::decomposed_t tail
-) {
-  return (head.idx >= queue::NODE_SIZE || head.idx >= tail.idx) && head.ptr == tail.ptr;
-}
-
 /********** private methods ***********************************************************************/
 
 template <typename T>
 detail::advance_head_res_t queue<T>::try_advance_head(
   queue::marked_ptr_t curr,
-  queue::node_t*      head,
-  queue::node_t*      tail
+  queue::node_t*      head
 ) {
   // load the current head's next pointer
   const auto next = head->next.load(ACQUIRE);
-  if (next == nullptr || head == tail) {
+  if (next == nullptr || head == marked_ptr_t(this->m_tail.load(RELAXED)).decompose_ptr()) {
     // if there is no next node yet or if there is one but the tail pointer does
     // not yet point at, the queue is determined to be empty
     head->incr_dequeue_count();
