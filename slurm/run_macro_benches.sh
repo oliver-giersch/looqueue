@@ -2,9 +2,9 @@
 
 rm slurm*
 
-sbatch reads/faa.sh
-sbatch reads/lcr.sh
-sbatch reads/loo.sh
+sbatch macro/faa.sh
+sbatch macro/lcr.sh
+sbatch macro/loo.sh
 #if [ "$0" == "--all" ]; then
 #fi
 
