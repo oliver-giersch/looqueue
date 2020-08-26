@@ -110,7 +110,7 @@ typename queue<T>::pointer queue<T>::dequeue() {
       // check the extracted pointer bits, if the result is null, the deque thread must have set the
       // READ bit before the pointer bits have been set by the corresponding enqueue operation, yet
       if (likely(res != nullptr)) {
-        if ((state & node_t::slot_flags_t::RESUME) != 0) {
+        if (unlikely((state & node_t::slot_flags_t::RESUME) != 0)) {
           head->try_reclaim(idx + 1);
         }
 

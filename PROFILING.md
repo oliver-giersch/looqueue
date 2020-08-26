@@ -40,7 +40,7 @@ node-stores \
 #### `faa::queue`:
 
 | operation       | instruction  | samples | samples (normalized) |
-| -------------- -| ------------ | ------- | -------------------- |
+| ----------------| ------------ | ------- | -------------------- |
 | HP acquire      | xchg         | 14.7k   | 4.9k                 |
 | FAA (1) enq_idx | lock xadd    | 168.7k  | 56.2k                |
 | CXCHG slot      | lock cmpxchg | 22.7k   | 7.6k                 |
