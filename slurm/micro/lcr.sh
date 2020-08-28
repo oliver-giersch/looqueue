@@ -6,4 +6,4 @@
 #SBATCH --partition=standard96:test
 #SBATCH -L ansys:1
 
-sh ./micro/run_pairs_and_bursts.sh lcr 50M
+sh ./micro/run_pairs_and_bursts.sh lcr 10M

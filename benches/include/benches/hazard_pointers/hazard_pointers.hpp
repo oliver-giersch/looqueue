@@ -18,6 +18,10 @@ hazard_pointers<T>::hazard_pointers(
   if (num_hazard_pointers > MAX_HAZARD_POINTERS) {
     throw std::invalid_argument("`num_hazard_pointers` must be <= 8");
   }
+
+  for (auto& thread_block : this->m_thread_blocks) {
+    thread_block.retired_objects.reserve(DEFAULT_RETIRE_CACHE);
+  }
 }
 
 template<typename T>

@@ -6,4 +6,4 @@
 #SBATCH --partition=standard96:test
 #SBATCH -L ansys:1
 
-sh ./macro/run_reads_and_writes.sh loo 50M
+sh ./macro/run_reads_and_writes.sh loo 10M

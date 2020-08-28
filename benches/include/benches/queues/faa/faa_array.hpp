@@ -75,12 +75,7 @@ void queue<T>::enqueue(queue::pointer elem, std::size_t thread_id) {
 template <typename T>
 typename queue<T>::pointer queue<T>::dequeue(std::size_t thread_id) {
   while (true) {
-    auto head = this->m_hazard_ptrs.protect_ptr(
-        this->m_head.load(),
-        thread_id,
-        HP_DEQ_HEAD
-    );
-
+    const auto head = this->m_hazard_ptrs.protect_ptr(this->m_head.load(), thread_id, HP_DEQ_HEAD);
     if (head != this->m_head.load()) {
       continue;
     }

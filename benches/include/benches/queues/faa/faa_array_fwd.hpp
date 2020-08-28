@@ -42,8 +42,7 @@ private:
 
   alignas(CACHE_LINE_ALIGN) std::atomic<node_t*> m_head;
   alignas(CACHE_LINE_ALIGN) std::atomic<node_t*> m_tail;
-
-  memory::hazard_pointers<node_t> m_hazard_ptrs;
+  alignas(CACHE_LINE_ALIGN) memory::hazard_pointers<node_t> m_hazard_ptrs;
 };
 }
 

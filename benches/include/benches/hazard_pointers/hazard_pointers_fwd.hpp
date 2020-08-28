@@ -27,12 +27,17 @@ public:
   /** clears one hazard pointer for the thread with the given id */
   void clear_one(std::size_t thread_id, std::size_t hp);
 
+  /** protects the value pointed at by the atomic pointer */
   pointer protect(
       const std::atomic<pointer>& atomic,
       std::size_t thread_id,
       std::size_t hp
   );
+
+  /** stores the given pointer in the specified hazard pointer, does not
+   * guarantee the value is actually protected */
   pointer protect_ptr(pointer ptr, std::size_t thread_id, std::size_t hp);
+  /** retires the given pointer */
   void retire(pointer ptr, std::size_t thread_id);
 
   hazard_pointers(const hazard_pointers&)            = delete;
@@ -43,14 +48,18 @@ public:
 private:
   static constexpr std::size_t MAX_HAZARD_POINTERS    = 4;
   static constexpr std::size_t DEFAULT_SCAN_THRESHOLD = 1;
+  static constexpr std::size_t DEFAULT_RETIRE_CACHE   = 64;
 
+  /** each hazard pointer is exclusively stored on its own cache line */
   struct alignas(CACHE_LINE_SIZE) hazard_ptr {
     std::atomic<pointer> ptr;
   };
 
   using hazard_ptr_arr_t = std::array<hazard_ptr, MAX_HAZARD_POINTERS>;
 
-  struct thread_block_t {
+  /** each thread has its own vector of retired records and its own array of
+   *  hazard pointers */
+  struct alignas(CACHE_LINE_ALIGN) thread_block_t {
     thread_block_t() = default;
     thread_block_t(thread_block_t&&) noexcept = default;
 

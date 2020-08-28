@@ -89,6 +89,8 @@ typename queue<T>::pointer queue<T>::dequeue() {
     // efficient (at least on x86)
     auto curr = marked_ptr_t(this->m_head.fetch_add(0, RELAXED));
     if (const auto head = curr.decompose(); unlikely(head.idx >= NODE_SIZE)) {
+      // the current node is definitely empty, load the tail to check if there is another node
+      // head can be advanced to or otherwise report the queue as empty.
       const auto tail = marked_ptr_t(this->m_tail.load(RELAXED)).decompose_ptr();
       if (head.ptr == tail) {
         return nullptr;
@@ -117,8 +119,9 @@ typename queue<T>::pointer queue<T>::dequeue() {
         return res;
       }
 
+      // the slot must be abandoned, but first it must be checked if the queue is empty
       const auto tail = marked_ptr_t(this->m_tail.load(RELAXED)).decompose();
-      if (idx > tail.idx) {
+      if (head == tail.ptr && idx > tail.idx) {
         return nullptr;
       }
 
