@@ -1,13 +1,11 @@
-cmake_minimum_required(VERSION 3.0)
-cmake_policy(SET CMP0077 NEW)
+cmake_minimum_required(VERSION 3.16)
 
 project(looqueue CXX)
 
 set(CMAKE_CXX_STANDARD 17)
 
+# set to "ON" to use sequentially consistent atomics exclusively
 option(LOO_USE_SEQ_CST "use only sequentially consistent atomics" OFF)
-
-add_subdirectory(benches)
 
 add_library(looqueue INTERFACE)
 target_compile_features(looqueue INTERFACE cxx_std_17)

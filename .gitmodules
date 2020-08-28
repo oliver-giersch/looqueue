@@ -1,7 +1,0 @@
-[submodule "benches/lib/rpmalloc"]
-	path = benches/lib/rpmalloc
-	url = https://github.com/mjansson/rpmalloc.git
-	branch = master
-[submodule "benches/lib/mimalloc"]
-	path = benches/lib/mimalloc
-	url = https://github.com/microsoft/mimalloc.git
