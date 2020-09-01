@@ -4,8 +4,7 @@
 #include <cstdint>
 #include <utility>
 
-namespace loo {
-namespace detail {
+namespace loo::detail {
 template <typename T, std::uint8_t N>
 class native_marked_ptr_t final {
   static_assert(N <= 9, "only up to 16 tag bits allowed");
@@ -59,7 +58,6 @@ public:
 private:
   std::uint64_t m_marked{ 0 };
 };
-}
 }
 
 #endif /* LOO_QUEUE_NATIVE_MARKED_PTR_HPP */

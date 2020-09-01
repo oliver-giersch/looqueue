@@ -17,6 +17,7 @@ struct queue<T>::node_t {
   using atomic_uint32_t = std::atomic<std::uint32_t>;
   using atomic_uint8_t  = std::atomic<std::uint8_t>;
 
+  /** the control block for managing the safe reclamation */
   struct alignas(CACHE_LINE_ALIGN) ctrl_block_t {
     /** high 16 bit: final observed count of slow-path enqueue ops, low 16 bit: current count */
     atomic_uint32_t tail_cnt{ 0 };
@@ -73,6 +74,7 @@ struct queue<T>::node_t {
     return (slot & slot_flags_t::READER) != 0;
   }
 
+  /** returns the size of an aligned node allocation */
   static constexpr std::size_t alloc_size() {
     const auto size = sizeof(node_t);
     const auto rem = size % queue::NODE_ALIGN;
@@ -97,6 +99,7 @@ struct queue<T>::node_t {
     return ptr;
   }
 
+  /** frees the memory of an allocated node */
   void operator delete(void* ptr) {
     ::operator delete(ptr);
   }
@@ -132,9 +135,6 @@ struct queue<T>::node_t {
     // set the ARR bit, since all slots have been visited, so all fast path enqueue and dequeue
     // ops must have finished and are no longer accessing the node
     const auto flags = this->ctrl.reclaim_flags.fetch_add(reclaim_flags_t::ARR, ACQ_REL);
-
-    if (start_idx == 0) return;
-
     // if all 3 bits are set after setting the SLOTS bit, the node can be reclaimed
     if (flags == (reclaim_flags_t::ENQ | reclaim_flags_t::DEQ)) {
       delete this;

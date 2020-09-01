@@ -4,8 +4,7 @@
 #include <cstdint>
 #include <utility>
 
-namespace loo {
-namespace detail {
+namespace loo::detail {
 template <typename T, std::uint8_t N>
 class marked_ptr_t final {
 public:
@@ -57,7 +56,6 @@ public:
 private:
   std::uint64_t m_marked{ 0 };
 };
-}
 }
 
 #endif /* LOO_QUEUE_DETAIL_MARKED_PTR_HPP */
