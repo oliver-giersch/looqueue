@@ -29,12 +29,12 @@ struct queue<T>::node_t {
 
   /** struct members */
 
+  /** control block for memory reclamation */
+  ctrl_block_t ctrl;
   /** pointer to successor node */
   std::atomic<node_t*> next{ nullptr };
   /** array of individual slots for storing elements + state bits */
   slot_array_t slots;
-  /** control block for memory reclamation */
-  ctrl_block_t ctrl;
 
   /** slot flag constants */
   enum slot_flags_t : std::uint64_t {
