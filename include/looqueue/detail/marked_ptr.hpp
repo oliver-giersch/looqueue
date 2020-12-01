@@ -35,12 +35,12 @@ public:
     return reinterpret_cast<pointer>(this->m_marked & PTR_MASK);
   }
 
-  tag_type decompose_tag() const {
+  [[nodiscard]] tag_type decompose_tag() const {
     return m_marked & TAG_MASK;
   }
 
   /** returns the underlying integer value */
-  std::uint64_t to_int() const {
+  [[nodiscard]] std::uint64_t to_int() const {
     return this->m_marked;
   }
 
