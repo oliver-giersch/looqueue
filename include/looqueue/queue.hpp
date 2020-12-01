@@ -20,8 +20,8 @@ template <typename T>
 queue<T>::queue() {
   // initially head and tail point at the same node
   auto head = reinterpret_cast<queue::slot_t>(new node_t());
-  std::atomic_init(&this->m_head, head);
-  std::atomic_init(&this->m_tail, head);
+  this->m_head.store(head, std::memory_order_relaxed);
+  this->m_tail.store(head, std::memory_order_relaxed);
 }
 
 template <typename T>
@@ -120,8 +120,8 @@ typename queue<T>::pointer queue<T>::dequeue() {
       }
 
       // the slot must be abandoned, but first it must be checked if the queue is empty
-      const auto tail = marked_ptr_t(this->m_tail.load(RELAXED)).decompose();
-      if (head == tail.ptr && idx > tail.idx) {
+      const auto enq_idx = marked_ptr_t(this->m_tail.load(RELAXED)).decompose_ptr();
+      if (idx > enq_idx) {
         return nullptr;
       }
 
