@@ -81,8 +81,9 @@ private:
   __attribute__ ((noinline))
   detail::advance_tail_res_t try_advance_tail(pointer elem, node_t* tail);
 
-  alignas(CACHE_LINE_ALIGN) atomic_slot_t m_head{ 0 };
-  alignas(CACHE_LINE_ALIGN) atomic_slot_t m_tail{ 0 };
+  alignas(CACHE_LINE_ALIGN) atomic_slot_t        m_head{ 0 };
+  alignas(CACHE_LINE_ALIGN) atomic_slot_t        m_tail{ 0 };
+  alignas(CACHE_LINE_ALIGN) std::atomic<node_t*> m_curr_tail;
 };
 }
 

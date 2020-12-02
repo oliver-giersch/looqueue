@@ -19,9 +19,10 @@ namespace loo {
 template <typename T>
 queue<T>::queue() {
   // initially head and tail point at the same node
-  auto head = reinterpret_cast<queue::slot_t>(new node_t());
-  this->m_head.store(head, std::memory_order_relaxed);
-  this->m_tail.store(head, std::memory_order_relaxed);
+  auto head = new node_t();
+  this->m_head.store(reinterpret_cast<queue::slot_t>(head), std::memory_order_relaxed);
+  this->m_tail.store(reinterpret_cast<queue::slot_t>(head), std::memory_order_relaxed);
+  this->m_curr_tail.store(head, std::memory_order_relaxed);
 }
 
 template <typename T>
@@ -49,6 +50,10 @@ void queue<T>::enqueue(queue::pointer elem) {
     // see PROOF.md regarding the (im)possibility of overflows
     const auto curr = marked_ptr_t(this->m_tail.fetch_add(1, ACQUIRE));
     const auto [tail, idx] = curr.decompose();
+
+    if (auto curr_tail = this->m_curr_tail.load(ACQUIRE); curr_tail != tail) {
+      this->m_curr_tail.compare_exchange_strong(curr_tail, tail, RELEASE, ACQUIRE);
+    }
 
     if (likely(idx < queue::NODE_SIZE)) {
       // ** fast path ** write access to the slot at tail.idx was uniquely reserved write the `elem`
@@ -87,12 +92,10 @@ typename queue<T>::pointer queue<T>::dequeue() {
     // using a read-modify-write operation that does not actually modify the value acquires
     // ownership of the variable's cache-line, making the subsequent FAA potentially more
     // efficient (at least on x86)
-    auto curr = marked_ptr_t(this->m_head.fetch_add(0, RELAXED));
-    if (const auto head = curr.decompose(); unlikely(head.idx >= NODE_SIZE)) {
-      // the current node is definitely empty, load the tail to check if there is another node
-      // head can be advanced to or otherwise report the queue as empty.
-      const auto tail = marked_ptr_t(this->m_tail.load(RELAXED)).decompose_ptr();
-      if (head.ptr == tail) {
+    auto curr = marked_ptr_t(this->m_head.fetch_add(0, ACQUIRE));
+    if (const auto [head, deq_idx] = curr.decompose(); head == this->m_curr_tail.load(ACQUIRE)) {
+      const auto [_, enq_idx] = marked_ptr_t(this->m_tail.load(ACQUIRE)).decompose();
+      if (enq_idx <= deq_idx) {
         return nullptr;
       }
     }
@@ -119,12 +122,7 @@ typename queue<T>::pointer queue<T>::dequeue() {
         return res;
       }
 
-      // the slot must be abandoned, but first it must be checked if the queue is empty
-      const auto enq_idx = marked_ptr_t(this->m_tail.load(RELAXED)).decompose_ptr();
-      if (idx > enq_idx) {
-        return nullptr;
-      }
-
+      // the slot must be abandoned
       continue;
     } else {
       // the first slow-path operation initiates the reclamation checks for the current node,
@@ -227,6 +225,8 @@ detail::advance_tail_res_t queue<T>::try_advance_tail(queue::pointer elem, queue
           tail->incr_enqueue_count();
         }
 
+        this->m_curr_tail.compare_exchange_strong(tail, next, RELEASE, RELAXED);
+
         // it doesn't matter which thread succeeded in updating the tail, since all must attempt to
         // set it to previous tail's next pointer, which was set by this thread and contains `elem`
         return detail::advance_tail_res_t::ADVANCED_AND_INSERTED;
@@ -244,6 +244,8 @@ detail::advance_tail_res_t queue<T>::try_advance_tail(queue::pointer elem, queue
       } else {
         tail->incr_enqueue_count();
       }
+
+      this->m_curr_tail.compare_exchange_strong(tail, next, RELEASE, RELAXED);
 
       return detail::advance_tail_res_t::ADVANCED;
     }

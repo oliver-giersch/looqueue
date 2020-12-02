@@ -28,7 +28,6 @@ struct queue<T>::node_t {
   };
 
   /** struct members */
-
   /** control block for memory reclamation */
   ctrl_block_t ctrl;
   /** pointer to successor node */
