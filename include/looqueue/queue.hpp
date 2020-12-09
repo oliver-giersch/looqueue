@@ -52,7 +52,7 @@ void queue<T>::enqueue(queue::pointer elem) {
     const auto [tail, idx] = curr.decompose();
 
     if (auto curr_tail = this->m_curr_tail.load(ACQUIRE); curr_tail != tail) {
-      this->m_curr_tail.compare_exchange_strong(curr_tail, tail, RELEASE, ACQUIRE);
+      this->m_curr_tail.compare_exchange_strong(curr_tail, tail, RELEASE, RELAXED);
     }
 
     if (likely(idx < queue::NODE_SIZE)) {
@@ -150,7 +150,7 @@ bool queue<T>::bounded_cas_loop(
   queue::atomic_slot_t& node,
   queue::marked_ptr_t&  expected,
   queue::marked_ptr_t   desired,
-  queue::node_t*        old_node
+  const queue::node_t*  old_node
 ) {
   // this loop attempts to exchange the expected (pointer, tag) pair with the desired pair,
   // the expected value is updated after each unsuccessful invocation so it always contains the
@@ -170,8 +170,8 @@ bool queue<T>::bounded_cas_loop(
 
 template <typename T>
 detail::advance_head_res_t queue<T>::try_advance_head(
-  queue::marked_ptr_t curr,
-  queue::node_t*      head
+  queue::marked_ptr_t  curr,
+  queue::node_t* const head
 ) {
   // load the current head's next pointer
   const auto next = head->next.load(ACQUIRE);
@@ -197,58 +197,69 @@ detail::advance_head_res_t queue<T>::try_advance_head(
 }
 
 template <typename T>
-detail::advance_tail_res_t queue<T>::try_advance_tail(queue::pointer elem, queue::node_t* tail) {
-  while (true) {
-    // re-load the tail pointer to check if it has already been advanced
-    auto curr = marked_ptr_t(this->m_tail.load(RELAXED));
+detail::advance_tail_res_t queue<T>::try_advance_tail(queue::pointer elem, queue::node_t* const tail) {
+  auto final_count = 0;
+  // re-load the tail pointer to check if it has already been advanced
+  auto curr = marked_ptr_t(this->m_tail.load(RELAXED));
 
-    // another thread has already advanced the tail pointer, so this thread can
-    // retry and will likely enter the fast-path
-    if (tail != curr.decompose_ptr()) {
-      tail->incr_enqueue_count();
-      return detail::advance_tail_res_t::ADVANCED;
-    }
+  // another thread has already advanced the tail pointer, so this thread can
+  // retry and will likely enter the fast-path
+  if (tail != curr.decompose_ptr()) {
+    tail->incr_enqueue_count();
+    return detail::advance_tail_res_t::ADVANCED;
+  }
 
-    // load the current tail's next pointer to check if another thread has already appended a new
-    // node to the queue but has not yet updated the tail pointer
-    auto next = tail->next.load();
-    if (next == nullptr) {
-      // there is no new node yet, allocate a new one and attempt to append it
-      auto node = new node_t(elem);
-      const auto res = tail->next.compare_exchange_strong(next, node, RELEASE, RELAXED);
+  // load the current tail's next pointer to check if another thread has already appended a new
+  // node to the queue but has not yet updated the tail pointer
+  auto next = tail->next.load();
+  if (next == nullptr) {
+    // there is no new node yet, allocate a new one and attempt to append it
+    auto node = new node_t(elem);
+    const auto res = tail->next.compare_exchange_strong(next, node, RELEASE, RELAXED);
 
-      if (res) {
-        // the CAS succeeded in appending the node after the tail, now the tail has to be updated
-        if (queue::bounded_cas_loop(this->m_tail, curr, marked_ptr_t(node, 1), tail)) {
-          tail->incr_enqueue_count(curr.decompose_tag() - queue::NODE_SIZE);
-        } else {
-          tail->incr_enqueue_count();
-        }
-
-        this->m_curr_tail.compare_exchange_strong(tail, next, RELEASE, RELAXED);
-
-        // it doesn't matter which thread succeeded in updating the tail, since all must attempt to
-        // set it to previous tail's next pointer, which was set by this thread and contains `elem`
-        return detail::advance_tail_res_t::ADVANCED_AND_INSERTED;
-      } else {
-        // the CAS failed so another thread must have succeeded in appending a node, delete the node
-        // allocated by this thread and try again
-        delete node;
-        continue;
+    auto advanced = detail::advance_tail_res_t::ADVANCED;
+    if (res) {
+      // the CAS succeeded in appending the node after the tail, now the tail has to be updated
+      if (queue::bounded_cas_loop(this->m_tail, curr, marked_ptr_t(node, 1), tail)) {
+        final_count = curr.decompose_tag() - queue::NODE_SIZE;
       }
+
+      // it doesn't matter, which thread succeeded in updating the tail, since all must attempt to
+      // set it to previous tail's next pointer, which was set by this thread and contains `elem`
+      advanced = detail::advance_tail_res_t::ADVANCED_AND_INSERTED;
     } else {
-      // there is already a new node after the current tail, so this thread has to help updating the
-      // queue's tail pointer and retry once the tail has been advanced
       if (queue::bounded_cas_loop(this->m_tail, curr, marked_ptr_t(next, 1), tail)) {
-        tail->incr_enqueue_count(curr.decompose_tag() - queue::NODE_SIZE);
-      } else {
-        tail->incr_enqueue_count();
+        final_count = curr.decompose_tag() - queue::NODE_SIZE;
       }
-
-      this->m_curr_tail.compare_exchange_strong(tail, next, RELEASE, RELAXED);
-
-      return detail::advance_tail_res_t::ADVANCED;
     }
+
+    // update the cached tail pointer
+    auto expected = tail;
+    this->m_curr_tail.compare_exchange_strong(expected, next, RELEASE, RELAXED);
+    // conclude the operation by increasing the enqueue count to allow reclamation
+    tail->incr_enqueue_count(final_count);
+
+    if (!res) {
+      // the CAS failed so another thread must have succeeded in appending a node, delete the node
+      // allocated by this thread and try again
+      delete node;
+    }
+
+    return advanced;
+  } else {
+    // there is already a new node after the current tail, so this thread has to help updating the
+    // queue's tail pointer and retry once the tail has been advanced
+    if (queue::bounded_cas_loop(this->m_tail, curr, marked_ptr_t(next, 1), tail)) {
+      final_count = curr.decompose_tag() - queue::NODE_SIZE;
+    }
+
+    // update the cached tail pointer
+    auto expected = tail;
+    this->m_curr_tail.compare_exchange_strong(expected, next, RELEASE, RELAXED);
+    // conclude the operation by increasing the enqueue count to allow reclamation
+    tail->incr_enqueue_count(final_count);
+
+    return detail::advance_tail_res_t::ADVANCED;
   }
 }
 }
