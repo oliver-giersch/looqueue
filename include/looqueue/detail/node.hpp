@@ -14,17 +14,15 @@ namespace loo {
 template <typename T>
 struct queue<T>::node_t {
   using slot_array_t    = std::array<queue::atomic_slot_t, queue::NODE_SIZE>;
-  using atomic_uint32_t = std::atomic<std::uint32_t>;
-  using atomic_uint8_t  = std::atomic<std::uint8_t>;
 
   /** the control block for managing the safe reclamation */
   struct alignas(CACHE_LINE_ALIGN) ctrl_block_t {
     /** high 16 bit: final observed count of slow-path enqueue ops, low 16 bit: current count */
-    atomic_uint32_t tail_cnt{ 0 };
+    std::atomic_uint32_t tail_cnt{ 0 };
     /** high 16 bit: final observed count of slow-path dequeue ops, low 16 bit: current count */
-    atomic_uint32_t head_cnt{ 0 };
+    std::atomic_uint32_t head_cnt{ 0 };
     /** bit mask for storing current reclamation status (all 3 bits set = node can be reclaimed) */
-    atomic_uint8_t  reclaim_flags{ 0 };
+    std::atomic_uint8_t  reclaim_flags{ 0 };
   };
 
   /** struct members */
@@ -77,7 +75,7 @@ struct queue<T>::node_t {
   node_t() {
     static_assert(alignof(decltype(*this)) == queue::NODE_ALIGN);
     for (auto& slot : this->slots) {
-      std::atomic_init(&slot, slot_flags_t::UNINIT);
+      slot.store(slot_flags_t::UNINIT, std::memory_order_relaxed);
     }
   };
 
@@ -143,7 +141,7 @@ private:
   };
 
   /** increases the current count in `counter` */
-  static counts_t incr_count(atomic_uint32_t& counter) {
+  static counts_t incr_count(std::atomic_uint32_t& counter) {
     const auto mask = counter.fetch_add(1, RELAXED);
     const auto final_count = static_cast<std::uint16_t>(mask >> counter_flags_t::SHIFT);
 
@@ -154,7 +152,7 @@ private:
   }
 
   /** increases the current count in `counter` and also (atomically) sets the final count */
-  static counts_t incr_count_final(atomic_uint32_t& counter, std::uint16_t final_count) {
+  static counts_t incr_count_final(std::atomic_uint32_t& counter, std::uint16_t final_count) {
     const auto add = 1 + (static_cast<std::uint32_t>(final_count) << counter_flags_t::SHIFT);
     const auto mask = counter.fetch_add(add, RELAXED);
 
