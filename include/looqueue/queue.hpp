@@ -175,7 +175,7 @@ detail::advance_head_res_t queue<T>::try_advance_head(
 ) {
   // load the current head's next pointer
   const auto next = head->next.load(ACQUIRE);
-  if (next == nullptr || head == marked_ptr_t(this->m_tail.load(RELAXED)).decompose_ptr()) {
+  if (next == nullptr || head == this->m_curr_tail.load(RELAXED)) {
     // if there is no next node yet or if there is one but the tail pointer does
     // not yet point at, the queue is determined to be empty
     head->incr_dequeue_count();
