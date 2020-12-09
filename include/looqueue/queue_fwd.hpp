@@ -53,15 +53,16 @@ public:
   queue& operator=(queue&&)      = delete;
 
 private:
-  /* each node must be aligned to this value in order to be able to store the
-     required number of tag bits in every node pointer */
-  static constexpr std::size_t NODE_ALIGN = 1ull << TAG_BITS;
-
   /** see queue::node_t::slot_flags_t */
   using slot_t        = std::uint64_t;
   using atomic_slot_t = std::atomic<slot_t>;
 
-  struct node_t;
+  /**
+   * each node must be aligned to this value in order to be able to store the
+   * required number of tag bits in every node pointer */
+  static constexpr std::size_t NODE_ALIGN = 1ull << TAG_BITS;
+
+  struct alignas(NODE_ALIGN) node_t;
   using marked_ptr_t = typename detail::marked_ptr_t<node_t, TAG_BITS>;
 
   /** loops and attempts to CAS `expected` with `desired` until either the CAS succeeds
@@ -70,7 +71,7 @@ private:
       atomic_slot_t& node,
       marked_ptr_t&  expected,
       marked_ptr_t   desired,
-      node_t*        old_node
+      const node_t*  old_node
   );
 
   /** attempts to advance the head node to its successor if there is one */

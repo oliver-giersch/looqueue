@@ -73,38 +73,9 @@ struct queue<T>::node_t {
     return (slot & slot_flags_t::READER) != 0;
   }
 
-  /** returns the size of an aligned node allocation */
-  static constexpr std::size_t alloc_size() {
-    const auto size = sizeof(node_t);
-    const auto rem = size % queue::NODE_ALIGN;
-    auto mul = size / queue::NODE_ALIGN;
-
-    if (rem != 0) {
-      mul += 1;
-    }
-
-    return queue::NODE_ALIGN * mul;
-  }
-
-  /** allocates a new node aligned to `NODE_ALIGN` */
-  void* operator new(std::size_t) {
-    // aligned_alloc requires size to be a multiple of the alignment
-    constexpr auto size = alloc_size();
-    auto ptr = std::aligned_alloc(queue::NODE_ALIGN, size);
-    if (ptr == nullptr) {
-      throw std::bad_alloc();
-    }
-
-    return ptr;
-  }
-
-  /** frees the memory of an allocated node */
-  void operator delete(void* ptr) {
-    ::operator delete(ptr);
-  }
-
   /** constructor (default) */
   node_t() {
+    static_assert(alignof(decltype(*this)) == queue::NODE_ALIGN);
     for (auto& slot : this->slots) {
       std::atomic_init(&slot, slot_flags_t::UNINIT);
     }
