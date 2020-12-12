@@ -51,8 +51,8 @@ void queue<T>::enqueue(queue::pointer elem) {
     const auto curr = marked_ptr_t(this->m_tail.fetch_add(1, acquire));
     const auto [tail, idx] = curr.decompose();
 
-    if (auto curr_tail = this->m_curr_tail.load(acquire); curr_tail != tail) {
-      this->m_curr_tail.compare_exchange_strong(curr_tail, tail, release, relaxed);
+    if (auto curr_tail = this->m_curr_tail.load(relaxed); curr_tail != tail) {
+      this->m_curr_tail.compare_exchange_strong(curr_tail, tail, relaxed, relaxed);
     }
 
     if (likely(idx < NODE_SIZE)) {
@@ -239,7 +239,7 @@ detail::advance_tail_res_t queue<T>::try_advance_tail(
 
     // update the cached tail pointer
     auto expected = tail;
-    this->m_curr_tail.compare_exchange_strong(expected, next, release, relaxed);
+    this->m_curr_tail.compare_exchange_strong(expected, next, relaxed, relaxed);
     // conclude the operation by increasing the enqueue count to allow reclamation
     tail->incr_enqueue_count(final_count);
 
@@ -259,7 +259,7 @@ detail::advance_tail_res_t queue<T>::try_advance_tail(
 
     // update the cached tail pointer
     auto expected = tail;
-    this->m_curr_tail.compare_exchange_strong(expected, next, release, relaxed);
+    this->m_curr_tail.compare_exchange_strong(expected, next, relaxed, relaxed);
     // conclude the operation by increasing the enqueue count to allow reclamation
     tail->incr_enqueue_count(final_count);
 
