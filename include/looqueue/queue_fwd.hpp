@@ -1,5 +1,5 @@
-#ifndef LOO_QUEUE_QUEUE_FWD_HPP
-#define LOO_QUEUE_QUEUE_FWD_HPP
+#ifndef LOO_QUEUE_FWD_HPP
+#define LOO_QUEUE_FWD_HPP
 
 #include <atomic>
 
@@ -9,16 +9,9 @@
 namespace loo {
 namespace detail {
 /** result type for private `try_advance_head` method */
-enum class advance_head_res_t {
-  QUEUE_EMPTY,
-  ADVANCED,
-};
-
+enum class advance_head_res_t { QUEUE_EMPTY, ADVANCED };
 /** result type for private `try_advance_tail` method */
-enum class advance_tail_res_t {
-  ADVANCED,
-  ADVANCED_AND_INSERTED,
-};
+enum class advance_tail_res_t { ADVANCED, ADVANCED_AND_INSERTED };
 }
 
 template <typename T>
@@ -27,6 +20,28 @@ class queue {
   /** the number of slots for storing individual elements in each node */
   static constexpr std::size_t NODE_SIZE = 1024;
   static constexpr std::size_t TAG_BITS  = 11;
+  /** ordering constants */
+  static constexpr auto relaxed = std::memory_order_relaxed;
+  static constexpr auto acquire = std::memory_order_acquire;
+  static constexpr auto release = std::memory_order_release;
+  static constexpr auto acq_rel = std::memory_order_acq_rel;
+
+  /** see queue::node_t::slot_flags_t */
+  using slot_t        = std::uint64_t;
+  using atomic_slot_t = std::atomic<slot_t>;
+
+  /**
+   * Each node must be aligned to this value in order to be able to store the
+   * required number of tag bits in every node pointer.
+   */
+  static constexpr std::size_t NODE_ALIGN = 1ull << TAG_BITS;
+
+  struct alignas(NODE_ALIGN) node_t;
+  using marked_ptr_t = typename detail::marked_ptr_t<node_t, TAG_BITS>;
+
+  alignas(CACHE_LINE_ALIGN) atomic_slot_t        m_head{ 0 };
+  alignas(CACHE_LINE_ALIGN) atomic_slot_t        m_tail{ 0 };
+  alignas(CACHE_LINE_ALIGN) std::atomic<node_t*> m_curr_tail;
 
 public:
   using pointer = T*;
@@ -40,52 +55,40 @@ public:
   /** destructor */
   ~queue() noexcept;
   /** enqueue an element to the queue's back */
-  __attribute__ ((noinline))
   void enqueue(pointer elem);
   /** dequeue an element from the queue's front */
-  __attribute__ ((noinline))
   pointer dequeue();
 
-  /** deleted constructors & operators */
+  /** deleted constructors & assignment operators */
   queue(const queue&)            = delete;
   queue(queue&&)                 = delete;
   queue& operator=(const queue&) = delete;
   queue& operator=(queue&&)      = delete;
 
 private:
-  /** see queue::node_t::slot_flags_t */
-  using slot_t        = std::uint64_t;
-  using atomic_slot_t = std::atomic<slot_t>;
-
   /**
-   * each node must be aligned to this value in order to be able to store the
-   * required number of tag bits in every node pointer */
-  static constexpr std::size_t NODE_ALIGN = 1ull << TAG_BITS;
-
-  struct alignas(NODE_ALIGN) node_t;
-  using marked_ptr_t = typename detail::marked_ptr_t<node_t, TAG_BITS>;
-
-  /** loops and attempts to CAS `expected` with `desired` until either the CAS succeeds
-   *  or the loaded pointer value (failure case) no longer matches `old_node` */
+   * Loops and attempts to CAS `expected` with `desired` until either the CAS succeeds
+   * or the loaded pointer value (failure case) no longer matches `old_node`
+   */
   static bool bounded_cas_loop(
-      atomic_slot_t& node,
-      marked_ptr_t&  expected,
-      marked_ptr_t   desired,
-      const node_t*  old_node
+      atomic_slot_t&  node,
+      marked_ptr_t&   expected,
+      marked_ptr_t    desired,
+      const node_t*   old_node,
+      std::memory_order order
   );
 
-  /** attempts to advance the head node to its successor if there is one */
-  __attribute__ ((noinline))
-  detail::advance_head_res_t try_advance_head(marked_ptr_t curr, node_t* head);
-  /** attempts to advance the tail node to its successor if there is one or attempts
-   *  to append a new node with `elem` stored in the first slot otherwise */
-  __attribute__ ((noinline))
+  /** Attempts to advance the head node to its successor, if there is one. */
+  __attribute__ ((cold))
+  detail::advance_head_res_t try_advance_head(marked_ptr_t curr, node_t* head, bool is_first);
+  /**
+   * Attempts to advance the tail node to its successor if there is one or
+   * attempts to append a new node with `elem` stored in the first slot
+   * otherwise
+   */
+  __attribute__ ((cold))
   detail::advance_tail_res_t try_advance_tail(pointer elem, node_t* tail);
-
-  alignas(CACHE_LINE_ALIGN) atomic_slot_t        m_head{ 0 };
-  alignas(CACHE_LINE_ALIGN) atomic_slot_t        m_tail{ 0 };
-  alignas(CACHE_LINE_ALIGN) std::atomic<node_t*> m_curr_tail;
 };
 }
 
-#endif /* LOO_QUEUE_QUEUE_FWD_HPP */
+#endif /* LOO_QUEUE_FWD_HPP */
