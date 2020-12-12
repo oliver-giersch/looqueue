@@ -1,5 +1,5 @@
-#ifndef LOO_QUEUE_DETAIL_MARKED_PTR_HPP
-#define LOO_QUEUE_DETAIL_MARKED_PTR_HPP
+#ifndef LOO_QUEUE_MARKED_PTR_HPP
+#define LOO_QUEUE_MARKED_PTR_HPP
 
 #include <cstdint>
 #include <utility>
@@ -58,4 +58,4 @@ private:
 };
 }
 
-#endif /* LOO_QUEUE_DETAIL_MARKED_PTR_HPP */
+#endif /* LOO_QUEUE_MARKED_PTR_HPP */
