@@ -48,7 +48,7 @@ void queue<T>::enqueue(queue::pointer elem) {
   while (true) {
     // increment the enqueue index, retrieve the tail pointer and previous index value
     // see PROOF.md regarding the (im)possibility of overflows
-    const auto curr = marked_ptr_t(this->m_tail.fetch_add(1, relaxed));
+    const auto curr = marked_ptr_t(this->m_tail.fetch_add(1, acquire));
     const auto [tail, idx] = curr.decompose();
 
     if (auto curr_tail = this->m_curr_tail.load(acquire); curr_tail != tail) {
@@ -102,7 +102,7 @@ typename queue<T>::pointer queue<T>::dequeue() {
 
     // increment the dequeue index, retrieve the head pointer and previous index value see PROOF.md
     // regarding the (im)possibility of overflows
-    curr = marked_ptr_t(this->m_head.fetch_add(1, relaxed));
+    curr = marked_ptr_t(this->m_head.fetch_add(1, acquire));
     const auto [head, idx] = curr.decompose();
 
     if (likely(idx < NODE_SIZE)) {
@@ -224,7 +224,7 @@ detail::advance_tail_res_t queue<T>::try_advance_tail(
     auto advanced = detail::advance_tail_res_t::ADVANCED;
     if (res) {
       // the CAS succeeded in appending the node after the tail, now the tail has to be updated
-      if (bounded_cas_loop(this->m_tail, curr, marked_ptr_t(node, 1), tail, relaxed)) {
+      if (bounded_cas_loop(this->m_tail, curr, marked_ptr_t(node, 1), tail, release)) {
         final_count = curr.decompose_tag() - NODE_SIZE;
       }
 
@@ -232,7 +232,7 @@ detail::advance_tail_res_t queue<T>::try_advance_tail(
       // set it to previous tail's next pointer, which was set by this thread and contains `elem`
       advanced = detail::advance_tail_res_t::ADVANCED_AND_INSERTED;
     } else {
-      if (bounded_cas_loop(this->m_tail, curr, marked_ptr_t(next, 1), tail, relaxed)) {
+      if (bounded_cas_loop(this->m_tail, curr, marked_ptr_t(next, 1), tail, release)) {
         final_count = curr.decompose_tag() - NODE_SIZE;
       }
     }
@@ -253,7 +253,7 @@ detail::advance_tail_res_t queue<T>::try_advance_tail(
   } else {
     // there is already a new node after the current tail, so this thread has to help updating the
     // queue's tail pointer and retry once the tail has been advanced
-    if (bounded_cas_loop(this->m_tail, curr, marked_ptr_t(next, 1), tail, relaxed)) {
+    if (bounded_cas_loop(this->m_tail, curr, marked_ptr_t(next, 1), tail, release)) {
       final_count = curr.decompose_tag() - NODE_SIZE;
     }
 
