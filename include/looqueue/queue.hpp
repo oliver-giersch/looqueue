@@ -1,14 +1,6 @@
 #ifndef LOO_QUEUE_HPP
 #define LOO_QUEUE_HPP
 
-#if defined(__GNUG__) || defined(__clang__) || defined(__INTEL_COMPILER)
-  #define   likely(cond) __builtin_expect ((cond), 1)
-  #define unlikely(cond) __builtin_expect ((cond), 0)
-#else
-  #define   likely(cond) cond
-  #define unlikely(cond) cond
-#endif
-
 #include <stdexcept>
 
 #include "looqueue/queue_fwd.hpp"
@@ -39,10 +31,8 @@ queue<T>::~queue() noexcept {
 template <typename T>
 void queue<T>::enqueue(queue::pointer elem) {
   // validate `elem` argument (must not be null and 4 byte aligned so it can store 2 bits)
-  if (elem == nullptr) {
+  if (elem == nullptr) [[unlikely]] {
     throw std::invalid_argument("`elem` must not be null");
-  } else if ((reinterpret_cast<queue::slot_t>(elem) & node_t::slot_flags_t::STATE_MASK) != 0) {
-    throw std::invalid_argument("`elem` must be at least 4-byte aligned");
   }
 
   while (true) {
@@ -51,22 +41,21 @@ void queue<T>::enqueue(queue::pointer elem) {
     const auto curr = marked_ptr_t(this->m_tail.fetch_add(1, acquire));
     const auto [tail, idx] = curr.decompose();
 
-    if (auto curr_tail = this->m_curr_tail.load(acquire); curr_tail != tail) {
+    if (auto curr_tail = this->m_curr_tail.load(acquire); curr_tail != tail) [[unlikely]] {
       this->m_curr_tail.compare_exchange_strong(curr_tail, tail, release, relaxed);
     }
 
-    if (likely(idx < NODE_SIZE)) {
+    if (idx < NODE_SIZE) [[likely]]  {
       // ** fast path ** write access to the slot at tail.idx was uniquely reserved write the `elem`
       // bits into the slot (unique access ensures this is done exactly once)
       const auto state = tail->slots[idx].fetch_add(reinterpret_cast<slot_t>(elem), release);
-      if (likely(state <= node_t::slot_flags_t::RESUME)) {
+      if (state <= node_t::slot_flags_t::RESUME) [[likely]] {
         // no READ bit is set, RESUME may or may not be set - the element was successfully inserted
         // if the RESUME bit is set, the corresponding dequeue operation will act accordingly.
         return;
       } else if (state == (node_t::slot_flags_t::READER | node_t::slot_flags_t::RESUME)) {
-        // both READ and RESUME are set, so this must be the final operation visiting this slot
-        // hence the slot must be abandoned (dequeue finished too early) and `try_reclaim` must be
-        // resumed
+        // READ and RESUME are set, so this must be the final operation visiting this slot hence the
+        // slot must be abandoned (dequeue finished too early) and `try_reclaim` must be resumed
         tail->try_reclaim(idx + 1);
       }
 
@@ -105,7 +94,7 @@ typename queue<T>::pointer queue<T>::dequeue() {
     curr = marked_ptr_t(this->m_head.fetch_add(1, acquire));
     const auto [head, idx] = curr.decompose();
 
-    if (likely(idx < NODE_SIZE)) {
+    if (idx < NODE_SIZE) [[likely]] {
       // ** fast path ** read access to the slot at tail.idx was uniquely reserved
       // set the READ bit in the slot (unique access ensures this is done exactly once)
       const auto state = head->slots[idx].fetch_add(node_t::slot_flags_t::READER, acquire);
@@ -114,8 +103,8 @@ typename queue<T>::pointer queue<T>::dequeue() {
 
       // check the extracted pointer bits, if the result is null, the deque thread must have set the
       // READ bit before the pointer bits have been set by the corresponding enqueue operation, yet
-      if (likely(res != nullptr)) {
-        if (unlikely((state & node_t::slot_flags_t::RESUME) != 0)) {
+      if (res != nullptr) [[likely]] {
+        if ((state & node_t::slot_flags_t::RESUME) != 0) [[unlikely]] {
           head->try_reclaim(idx + 1);
         }
 

@@ -17,6 +17,7 @@ enum class advance_tail_res_t { ADVANCED, ADVANCED_AND_INSERTED };
 template <typename T>
 class queue {
   static_assert(sizeof(T*) == 8, "loo::queue is only valid for 64-bit architectures");
+  static_assert(alignof(T) >= 4, "all T pointers must be at least 4-byte aligned");
   /** the number of slots for storing individual elements in each node */
   static constexpr std::size_t NODE_SIZE = 1024;
   static constexpr std::size_t TAG_BITS  = 11;
