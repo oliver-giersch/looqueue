@@ -5,7 +5,6 @@
 
 #include "looqueue/queue_fwd.hpp"
 #include "looqueue/detail/node.hpp"
-#include "looqueue/detail/ordering.hpp"
 
 namespace loo {
 template <typename T>
@@ -168,7 +167,7 @@ detail::advance_head_res_t queue<T>::try_advance_head(
   if (next == nullptr || head == this->m_curr_tail.load(relaxed)) {
     // if there is no next node yet or if there is one but the tail pointer does not yet point at,
     // the queue is determined to be empty
-    head->incr_dequeue_count();
+    head->increment_dequeue_count();
     return detail::advance_head_res_t::QUEUE_EMPTY;
   }
 
@@ -177,10 +176,10 @@ detail::advance_head_res_t queue<T>::try_advance_head(
   if (bounded_cas_loop(this->m_head, curr, marked_ptr_t(next, 0), head, release)) {
     // the current thread succeeded in exchanging the node and is hence the operation that observed
     // the final index value (count) of a all dequeue operations accessing this node
-    head->incr_dequeue_count(curr.decompose_tag() - NODE_SIZE);
+    head->increment_dequeue_count(curr.decompose_tag() - NODE_SIZE);
   } else {
     // some other node succeeded in exchanging the head and the operation is also complete
-    head->incr_dequeue_count();
+    head->increment_dequeue_count();
   }
 
   return detail::advance_head_res_t::ADVANCED;
@@ -191,14 +190,14 @@ detail::advance_tail_res_t queue<T>::try_advance_tail(
     queue::pointer elem,
     queue::node_t* const tail
 ) {
-  auto final_count = 0;
+  std::uint16_t final_count = 0;
   // re-load the tail pointer to check if it has already been advanced
   auto curr = marked_ptr_t(this->m_tail.load(relaxed));
 
   // another thread has already advanced the tail pointer, so this thread can retry and will likely
   // enter the fast-path
   if (tail != curr.decompose_ptr()) {
-    tail->incr_enqueue_count();
+    tail->increment_enqueue_count();
     return detail::advance_tail_res_t::ADVANCED;
   }
 
@@ -208,9 +207,8 @@ detail::advance_tail_res_t queue<T>::try_advance_tail(
   if (next == nullptr) {
     // there is no new node yet, allocate a new one and attempt to append it
     auto node = new node_t(elem);
-    const auto res = tail->next.compare_exchange_strong(next, node, relaxed, relaxed);
-
     auto advanced = detail::advance_tail_res_t::ADVANCED;
+    const auto res = tail->next.compare_exchange_strong(next, node, relaxed, relaxed);
     if (res) {
       // the CAS succeeded in appending the node after the tail, now the tail has to be updated
       if (bounded_cas_loop(this->m_tail, curr, marked_ptr_t(node, 1), tail, release)) {
@@ -230,7 +228,7 @@ detail::advance_tail_res_t queue<T>::try_advance_tail(
     auto expected = tail;
     this->m_curr_tail.compare_exchange_strong(expected, next, release, relaxed);
     // conclude the operation by increasing the enqueue count to allow reclamation
-    tail->incr_enqueue_count(final_count);
+    tail->increment_enqueue_count(final_count);
 
     if (!res) {
       // the CAS failed so another thread must have succeeded in appending a node, delete the node
@@ -250,7 +248,7 @@ detail::advance_tail_res_t queue<T>::try_advance_tail(
     auto expected = tail;
     this->m_curr_tail.compare_exchange_strong(expected, next, release, relaxed);
     // conclude the operation by increasing the enqueue count to allow reclamation
-    tail->incr_enqueue_count(final_count);
+    tail->increment_enqueue_count(final_count);
 
     return detail::advance_tail_res_t::ADVANCED;
   }
