@@ -32,7 +32,7 @@ struct queue<T>::node_t {
   slot_array_t slots { };
 
   /** slot flag constants */
-  enum slot_flags_t : std::uint64_t {
+  enum slot_flags_t : std::uintptr_t {
     UNINIT    = 0b00ull,
     RESUME    = 0b01ull,
     READER    = 0b10ull,
@@ -81,7 +81,7 @@ struct queue<T>::node_t {
   }
 
   /** checks if all slots are consumed before attempting reclamation */
-  void try_reclaim(std::uint64_t start_idx) {
+  void try_reclaim(std::size_t start_idx) {
     // iterate all slots beginning at `start_idx`
     for (auto idx = start_idx; idx < NODE_SIZE; ++idx) {
       auto& slot = this->slots[idx];
