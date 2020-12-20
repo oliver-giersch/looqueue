@@ -19,23 +19,22 @@ class queue {
   static_assert(sizeof(T*) == 8, "loo::queue is only valid for 64-bit architectures");
   static_assert(alignof(T) >= 4, "all T pointers must be at least 4-byte aligned");
   /** the number of slots for storing individual elements in each node */
-  static constexpr std::size_t NODE_SIZE = 1024;
-  static constexpr std::size_t TAG_BITS  = 11;
+  static constexpr auto NODE_SIZE = std::size_t{ 1024 };
+  static constexpr auto TAG_BITS  = std::size_t{ 11 };
   /** ordering constants */
   static constexpr auto relaxed = std::memory_order_relaxed;
   static constexpr auto acquire = std::memory_order_acquire;
   static constexpr auto release = std::memory_order_release;
   static constexpr auto acq_rel = std::memory_order_acq_rel;
-
   /** see queue::node_t::slot_flags_t */
-  using slot_t        = std::uint64_t;
+  using slot_t        = std::uintptr_t;
   using atomic_slot_t = std::atomic<slot_t>;
 
   /**
    * Each node must be aligned to this value in order to be able to store the
    * required number of tag bits in every node pointer.
    */
-  static constexpr std::size_t NODE_ALIGN = 1ull << TAG_BITS;
+  static constexpr auto NODE_ALIGN = std::size_t{ 1 } << TAG_BITS;
 
   struct alignas(NODE_ALIGN) node_t;
   using marked_ptr_t = typename detail::marked_ptr_t<node_t, TAG_BITS>;
@@ -80,14 +79,12 @@ private:
   );
 
   /** Attempts to advance the head node to its successor, if there is one. */
-  __attribute__ ((cold))
   detail::advance_head_res_t try_advance_head(marked_ptr_t curr, node_t* head, bool is_first);
   /**
    * Attempts to advance the tail node to its successor if there is one or
    * attempts to append a new node with `elem` stored in the first slot
-   * otherwise
+   * otherwise.
    */
-  __attribute__ ((cold))
   detail::advance_tail_res_t try_advance_tail(pointer elem, node_t* tail);
 };
 }
