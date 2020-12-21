@@ -10,9 +10,9 @@ namespace loo {
 template <typename T>
 queue<T>::queue() {
   // initially head and tail point at the same node
-  auto head = new node_t();
-  this->m_head.store(reinterpret_cast<queue::slot_t>(head), relaxed);
-  this->m_tail.store(reinterpret_cast<queue::slot_t>(head), relaxed);
+  auto head = new(std::align_val_t{ NODE_ALIGN }) node_t();
+  this->m_head.store(reinterpret_cast<slot_t>(head), relaxed);
+  this->m_tail.store(reinterpret_cast<slot_t>(head), relaxed);
   this->m_curr_tail.store(head, relaxed);
 }
 
@@ -31,7 +31,7 @@ template <typename T>
 void queue<T>::enqueue(queue::pointer elem) {
   // validate `elem` argument (must not be null and 4 byte aligned so it can store 2 bits)
   if (elem == nullptr) [[unlikely]] {
-    throw std::invalid_argument("`elem` must not be null");
+    throw std::invalid_argument("enqueue element must not be null");
   }
 
   while (true) {
@@ -39,10 +39,7 @@ void queue<T>::enqueue(queue::pointer elem) {
     // see PROOF.md regarding the (im)possibility of overflows
     const auto curr = marked_ptr_t(this->m_tail.fetch_add(1, acquire));
     const auto [tail, idx] = curr.decompose();
-
-    if (auto curr_tail = this->m_curr_tail.load(acquire); curr_tail != tail) [[unlikely]] {
-      this->m_curr_tail.compare_exchange_strong(curr_tail, tail, release, relaxed);
-    }
+    assert(idx <= (1024 + 128));
 
     if (idx < NODE_SIZE) [[likely]]  {
       // ** fast path ** write access to the slot at tail.idx was uniquely reserved write the `elem`
@@ -77,33 +74,19 @@ void queue<T>::enqueue(queue::pointer elem) {
 template <typename T>
 typename queue<T>::pointer queue<T>::dequeue() {
   while (true) {
-    // using a read-modify-write operation that does not actually modify the value but acquires
-    // ownership of the variable's cache-line, making the subsequent FAA potentially more efficient
-    // (at least on x86)
-    const auto curr_tail = this->m_curr_tail.load(acquire);
-    auto curr = marked_ptr_t(this->m_head.fetch_add(0, acquire));
-    if (const auto [head, deq_idx] = curr.decompose(); head == curr_tail) {
-      const auto [_, enq_idx] = marked_ptr_t(this->m_tail.load(relaxed)).decompose();
-      if (enq_idx <= deq_idx) {
-        return nullptr;
-      }
+    if (this->is_empty()) {
+      return nullptr;
     }
 
     // increment the dequeue index, retrieve the head pointer and previous index value see PROOF.md
     // regarding the (im)possibility of overflows
-    curr = marked_ptr_t(this->m_head.fetch_add(1, acquire));
+    const auto curr = marked_ptr_t(this->m_head.fetch_add(1, acquire));
     const auto [head, idx] = curr.decompose();
+    assert(idx <= (1024 + 256 - 1));
 
     if (idx < NODE_SIZE) [[likely]] {
       // ** fast path ** read access to the slot at tail.idx was uniquely reserved
       // set the READ bit in the slot (unique access ensures this is done exactly once)
-      for (auto p = 0; p < 10; ++p) {
-        const auto state = head->slots[idx].load(relaxed);
-        if (reinterpret_cast<pointer>(state & node_t::slot_flags_t::ELEM_MASK)) {
-          break;
-        }
-      }
-
       const auto state = head->slots[idx].fetch_add(node_t::slot_flags_t::READER, acquire);
       // extract the pointer bits from the retrieved value
       const auto res = reinterpret_cast<pointer>(state & node_t::slot_flags_t::ELEM_MASK);
@@ -123,7 +106,7 @@ typename queue<T>::pointer queue<T>::dequeue() {
     } else {
       // ** slow path ** the current head node has been fully consumed and must
       // be replaced by its successor, if there is one
-      switch (this->try_advance_head(curr, head, idx == NODE_SIZE)) {
+      switch (this->try_advance_head(curr, head, idx)) {
         case detail::advance_head_res_t::ADVANCED:    continue;
         case detail::advance_head_res_t::QUEUE_EMPTY: return nullptr;
       }
@@ -144,7 +127,7 @@ bool queue<T>::bounded_cas_loop(
   // this loop attempts to exchange the expected (pointer, tag) pair with the desired pair,
   // the expected value is updated after each unsuccessful invocation so it always contains the
   // latest observed index value
-  while (!node.compare_exchange_weak(expected.as_int(), desired.to_int(), order, relaxed)) {
+  while (!node.compare_exchange_weak(expected.as_uintptr(), desired.to_uintptr(), order, acquire)) {
     // the CAS failed but the read pointer value no longer matches the previous
     // value, so another thread must have updated the pointer
     if (expected.decompose_ptr() != old_node) {
@@ -158,21 +141,46 @@ bool queue<T>::bounded_cas_loop(
 /********** private methods ***********************************************************************/
 
 template <typename T>
+bool queue<T>::is_empty() noexcept {
+  // using a read-modify-write operation that does not actually modify the value but acquires
+  // ownership of the variable's cache-line, making the subsequent FAA potentially more efficient
+  // (at least on x86)
+  auto curr = marked_ptr_t(this->m_head.fetch_add(0, acquire));
+  const auto [head, deq_idx] = curr.decompose();
+  if (auto curr_tail = this->m_curr_tail.load(acquire); head == curr_tail) {
+    if (deq_idx >= NODE_SIZE) {
+      return true;
+    }
+
+    const auto [tail, enq_idx] = marked_ptr_t(this->m_tail.load(relaxed)).decompose();
+    if (curr_tail != tail) {
+      this->m_curr_tail.compare_exchange_strong(curr_tail, tail, release, relaxed);
+    }
+
+    if (head == tail && enq_idx <= deq_idx) {
+      return true;
+    }
+  }
+
+  return false;
+}
+
+template <typename T>
 detail::advance_head_res_t queue<T>::try_advance_head(
   queue::marked_ptr_t  curr,
   queue::node_t* const head,
-  bool is_first
+  std::size_t idx
 ) {
   // the first slow-path operation initiates the reclamation checks for the current node, which
   // ensures the procedure is most likely to succeed on the first attempt since all previous enqueue
   // and dequeue operations must have already been initiated (but not necessarily completed)
-  if (is_first) {
+  if (idx == NODE_SIZE) {
     head->try_reclaim(0);
   }
 
   // load the current head's next pointer
   const auto next = head->next.load(acquire);
-  if (next == nullptr || head == this->m_curr_tail.load(relaxed)) {
+  if (next == nullptr || marked_ptr_t{ this->m_tail.load(acquire) }.decompose_ptr() == head) {
     // if there is no next node yet or if there is one but the tail pointer does not yet point at,
     // the queue is determined to be empty
     head->increment_dequeue_count();
@@ -198,7 +206,7 @@ detail::advance_tail_res_t queue<T>::try_advance_tail(
     queue::pointer elem,
     queue::node_t* const tail
 ) {
-  std::uint16_t final_count = 0;
+  std::uint64_t final_count = 0;
   // re-load the tail pointer to check if it has already been advanced
   auto curr = marked_ptr_t(this->m_tail.load(relaxed));
 
@@ -214,7 +222,7 @@ detail::advance_tail_res_t queue<T>::try_advance_tail(
   auto next = tail->next.load(relaxed);
   if (next == nullptr) {
     // there is no new node yet, allocate a new one and attempt to append it
-    auto node = new node_t(elem);
+    auto node = new(std::align_val_t{ NODE_ALIGN }) node_t(elem);
     auto advanced = detail::advance_tail_res_t::ADVANCED;
     const auto res = tail->next.compare_exchange_strong(next, node, release, relaxed);
     if (res) {
@@ -225,6 +233,7 @@ detail::advance_tail_res_t queue<T>::try_advance_tail(
 
       // it doesn't matter, which thread succeeded in updating the tail, since all must attempt to
       // set it to previous tail's next pointer, which was set by this thread and contains `elem`
+      next = node;
       advanced = detail::advance_tail_res_t::ADVANCED_AND_INSERTED;
     } else {
       if (bounded_cas_loop(this->m_tail, curr, marked_ptr_t(next, 1), tail, release)) {

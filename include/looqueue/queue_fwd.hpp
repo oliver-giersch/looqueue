@@ -21,6 +21,11 @@ class queue {
   /** the number of slots for storing individual elements in each node */
   static constexpr auto NODE_SIZE = std::size_t{ 1024 };
   static constexpr auto TAG_BITS  = std::size_t{ 11 };
+  /**
+   * Each node must be aligned to this value in order to be able to store the
+   * required number of tag bits in every node pointer.
+   */
+  static constexpr auto NODE_ALIGN = std::size_t{ 1 } << TAG_BITS;
   /** ordering constants */
   static constexpr auto relaxed = std::memory_order_relaxed;
   static constexpr auto acquire = std::memory_order_acquire;
@@ -29,12 +34,6 @@ class queue {
   /** see queue::node_t::slot_flags_t */
   using slot_t        = std::uintptr_t;
   using atomic_slot_t = std::atomic<slot_t>;
-
-  /**
-   * Each node must be aligned to this value in order to be able to store the
-   * required number of tag bits in every node pointer.
-   */
-  static constexpr auto NODE_ALIGN = std::size_t{ 1 } << TAG_BITS;
 
   struct alignas(NODE_ALIGN) node_t;
   using marked_ptr_t = typename detail::marked_ptr_t<node_t, TAG_BITS>;
@@ -77,8 +76,14 @@ private:
       std::memory_order order
   );
 
+  bool is_empty() noexcept;
+
   /** Attempts to advance the head node to its successor, if there is one. */
-  detail::advance_head_res_t try_advance_head(marked_ptr_t curr, node_t* head, bool is_first);
+  detail::advance_head_res_t try_advance_head(
+      marked_ptr_t curr,
+      node_t* head,
+      std::size_t idx
+  );
   /**
    * Attempts to advance the tail node to its successor if there is one or
    * attempts to append a new node with `elem` stored in the first slot
