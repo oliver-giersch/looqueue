@@ -45,7 +45,6 @@ class queue {
 
 public:
   using pointer = T*;
-
   /** see PROOF.md for the reasoning behind these constants */
   static constexpr std::size_t MAX_PRODUCER_THREADS = (1ull << TAG_BITS) - NODE_SIZE + 1;
   static constexpr std::size_t MAX_CONSUMER_THREADS = ((1ull << TAG_BITS) - NODE_SIZE + 1) / 2;
@@ -71,10 +70,10 @@ private:
    * or the loaded pointer value (failure case) no longer matches `old_node`
    */
   static bool bounded_cas_loop(
-      atomic_slot_t&  node,
-      marked_ptr_t&   expected,
-      marked_ptr_t    desired,
-      const node_t*   old_node,
+      atomic_slot_t&    node,
+      marked_ptr_t&     expected,
+      marked_ptr_t      desired,
+      const node_t*     old_node,
       std::memory_order order
   );
 
