@@ -39,7 +39,6 @@ void queue<T>::enqueue(queue::pointer elem) {
     // see PROOF.md regarding the (im)possibility of overflows
     const auto curr = marked_ptr_t(this->m_tail.fetch_add(1, acquire));
     const auto [tail, idx] = curr.decompose();
-    assert(idx <= (1024 + 128));
 
     if (idx < NODE_SIZE) [[likely]]  {
       // ** fast path ** write access to the slot at tail.idx was uniquely reserved write the `elem`
@@ -82,7 +81,6 @@ typename queue<T>::pointer queue<T>::dequeue() {
     // regarding the (im)possibility of overflows
     const auto curr = marked_ptr_t(this->m_head.fetch_add(1, acquire));
     const auto [head, idx] = curr.decompose();
-    assert(idx <= (1024 + 256 - 1));
 
     if (idx < NODE_SIZE) [[likely]] {
       // ** fast path ** read access to the slot at tail.idx was uniquely reserved
