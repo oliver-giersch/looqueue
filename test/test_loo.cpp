@@ -6,20 +6,19 @@
 #include "looqueue/queue.hpp"
 
 int main() {
-  const std::size_t thread_count = 8;
-  const std::size_t count = 100 * 10000;
+  const std::size_t thread_count = 128;
+  const std::size_t count = 100'000;
 
-  std::vector<std::vector<std::size_t>> thread_elements{};
-  thread_elements.reserve(thread_count);
+  std::vector<std::size_t> thread_elements{};
+  thread_elements.reserve(count);
 
-  for (auto t = 0; t < thread_count; ++t) {
-    thread_elements.emplace_back();
-    thread_elements[t].reserve(count);
-
-    for (auto i = 0; i < count; ++i) {
-      thread_elements[t].push_back(i);
-    }
+  for (auto i = 0; i < count; ++i) {
+    thread_elements.push_back(i);
   }
+
+  auto in_bounds = [&thread_elements](const std::size_t* pointer) {
+    return pointer >= &thread_elements.front() && pointer <= &thread_elements.back();
+  };
 
   std::vector<std::thread> threads{};
   threads.reserve(thread_count * 2);
@@ -31,11 +30,11 @@ int main() {
 
   for (auto thread = 0; thread < thread_count; ++thread) {
     // producer thread
-    threads.emplace_back([&, thread] {
+    threads.emplace_back([&] {
       while (!start.load());
 
       for (auto op = 0; op < count; ++op) {
-        queue.enqueue(&thread_elements.at(thread).at(op));
+        queue.enqueue(&thread_elements.at(op));
       }
     });
 
@@ -49,8 +48,9 @@ int main() {
       while (deq_count < count) {
         const auto res = queue.dequeue();
         if (res != nullptr) {
-          if (*res >= count) {
-            throw std::runtime_error("must not retrieve element larger than `count`");
+          if (!in_bounds(res)) {
+            std::cerr << "error: invalid pointer retrieved " << res << std::endl;
+            throw std::runtime_error("invalid dequeue result");
           }
 
           thread_sum += *res;
