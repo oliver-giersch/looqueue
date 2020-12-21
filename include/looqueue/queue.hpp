@@ -125,7 +125,7 @@ bool queue<T>::bounded_cas_loop(
   // this loop attempts to exchange the expected (pointer, tag) pair with the desired pair,
   // the expected value is updated after each unsuccessful invocation so it always contains the
   // latest observed index value
-  while (!node.compare_exchange_weak(expected.as_uintptr(), desired.to_uintptr(), order, acquire)) {
+  while (!node.compare_exchange_weak(expected.as_uintptr(), desired.to_uintptr(), order, relaxed)) {
     // the CAS failed but the read pointer value no longer matches the previous
     // value, so another thread must have updated the pointer
     if (expected.decompose_ptr() != old_node) {
@@ -143,19 +143,15 @@ bool queue<T>::is_empty() noexcept {
   // using a read-modify-write operation that does not actually modify the value but acquires
   // ownership of the variable's cache-line, making the subsequent FAA potentially more efficient
   // (at least on x86)
-  auto curr = marked_ptr_t(this->m_head.fetch_add(0, acquire));
+  auto curr = marked_ptr_t(this->m_head.fetch_add(0, relaxed));
   const auto [head, deq_idx] = curr.decompose();
   if (auto curr_tail = this->m_curr_tail.load(acquire); head == curr_tail) {
-    if (deq_idx >= NODE_SIZE) {
-      return true;
-    }
-
     const auto [tail, enq_idx] = marked_ptr_t(this->m_tail.load(relaxed)).decompose();
     if (curr_tail != tail) {
       this->m_curr_tail.compare_exchange_strong(curr_tail, tail, release, relaxed);
     }
 
-    if (head == tail && enq_idx <= deq_idx) {
+    if (head == tail && (deq_idx >= NODE_SIZE || enq_idx <= deq_idx)) {
       return true;
     }
   }
