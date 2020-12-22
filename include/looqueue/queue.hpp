@@ -73,6 +73,7 @@ void queue<T>::enqueue(queue::pointer elem) {
 template <typename T>
 typename queue<T>::pointer queue<T>::dequeue() {
   while (true) {
+    // check if the queue is empty
     if (this->is_empty()) {
       return nullptr;
     }
@@ -172,14 +173,15 @@ detail::advance_head_res_t queue<T>::try_advance_head(
     head->try_reclaim(0);
   }
 
-  // load the current head's next pointer
-  const auto next = head->next.load(acquire);
-  if (next == nullptr || marked_ptr_t{ this->m_tail.load(acquire) }.decompose_ptr() == head) {
-    // if there is no next node yet or if there is one but the tail pointer does not yet point at,
-    // the queue is determined to be empty
+  if (head == marked_ptr_t{ this->m_tail.load(acquire) }.decompose_ptr()) {
+    // if the tail has not yet been updated, the head must not be advanced ahead of it, even if
+    // there already is a new node installed through the next pointer
     head->increment_dequeue_count();
     return detail::advance_head_res_t::QUEUE_EMPTY;
   }
+
+  // load the current head's next pointer, which must have been set BEFORE updating the tail
+  const auto next = head->next.load(acquire);
 
   // attempt to exchange the current head node (with its last observed index) with the next node
   curr.inc_idx();
