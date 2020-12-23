@@ -144,7 +144,7 @@ bool queue<T>::is_empty() noexcept {
   // using a read-modify-write operation that does not actually modify the value but acquires
   // ownership of the variable's cache-line, making the subsequent FAA potentially more efficient
   // (at least on x86)
-  const auto [head, deq_idx] = marked_ptr_t{ this->m_head.fetch_add(0, relaxed) };
+  const auto [head, deq_idx] = marked_ptr_t{ this->m_head.fetch_add(0, relaxed) }.decompose();
   if (auto curr_tail = this->m_curr_tail.load(acquire); head == curr_tail) {
     const auto [tail, enq_idx] = marked_ptr_t(this->m_tail.load(relaxed)).decompose();
     if (curr_tail != tail) {
