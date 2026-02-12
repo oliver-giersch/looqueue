@@ -5,58 +5,83 @@
 #include <utility>
 
 namespace loo::detail {
+/*
+ * A tag pointer that stores up to N tag bits in the upper 16 bits of the
+ * pointer word.
+ * On x86-64 in Linux, all virtual user addresses are naturally below
+ * 0x7FFFFFFFFFFF by convention as of today.
+ * This may change in the future, if 5-level paging becomes more common.
+ */
 template <typename T, std::uint8_t N>
 class native_marked_ptr_t final {
-  static_assert(N <= 9, "only up to 16 tag bits allowed");
+	static_assert(N <= 16, "only up to 16 tag bits allowed");
+
 public:
-  using pointer  = T*;
-  using tag_type = std::uint64_t;
+	using pointer = T *;
+	using tag_type = std::uintptr_t;
 
-  static constexpr std::uint64_t TAG_SHIFT = 55;
-  static constexpr std::uint64_t TAG_MASK  = 0x1FFull << TAG_SHIFT;
-  static constexpr std::uint64_t PTR_MASK  = ~TAG_MASK;
-  static constexpr std::uint64_t INCREMENT = 1ull << TAG_SHIFT;
+	static constexpr std::uintptr_t TAG_SHIFT = 64 - 16;
+	static constexpr std::uintptr_t TAG_MASK = std::uintptr_t { 0xFFFF }
+		<< TAG_SHIFT;
+	static constexpr std::uintptr_t PTR_MASK = ~TAG_MASK;
+	static constexpr std::uintptr_t INCREMENT = 1ull << TAG_SHIFT;
 
-  struct decomposed_t {
-    pointer  ptr;
-    tag_type idx;
-  };
+	struct decomposed_t {
+		pointer ptr;
+		tag_type idx;
+	};
 
-  /** constructor (default) */
-  native_marked_ptr_t() = default;
-  /** constructor(s) */
-  explicit native_marked_ptr_t(std::uint64_t marked) : m_marked{ marked } {}
-  explicit native_marked_ptr_t(pointer ptr, tag_type idx) :
-      native_marked_ptr_t(idx << TAG_SHIFT | reinterpret_cast<std::uint64_t>(ptr)) {}
+	native_marked_ptr_t() = default;
 
-  decomposed_t decompose() const {
-    return { this->decompose_ptr(), this->decompose_tag() };
-  }
+	explicit native_marked_ptr_t(std::uint64_t marked)
+			: m_marked { marked }
+	{
+	}
 
-  pointer decompose_ptr() const {
-    return reinterpret_cast<pointer>(this->m_marked & PTR_MASK);
-  }
+	explicit native_marked_ptr_t(pointer ptr, tag_type idx)
+			: native_marked_ptr_t(
+					reinterpret_cast<std::uintptr_t>(ptr) | idx << TAG_SHIFT)
+	{
+	}
 
-  tag_type decompose_tag() const {
-    return m_marked >> TAG_SHIFT;
-  }
+	decomposed_t
+	decompose() const
+	{
+		return { this->decompose_ptr(), this->decompose_tag() };
+	}
 
-  /** returns the underlying integer value */
-  std::uint64_t to_int() const {
-    return this->m_marked;
-  }
+	pointer
+	decompose_ptr() const
+	{
+		return reinterpret_cast<pointer>(this->m_marked & PTR_MASK);
+	}
 
-  /** returns a reference to the underlying integer value */
-  std::uint64_t& as_int() {
-    return this->m_marked;
-  }
+	tag_type
+	decompose_tag() const
+	{
+		return m_marked >> TAG_SHIFT;
+	}
 
-  void inc_idx(tag_type add = 1) {
-    this->m_marked += (add << TAG_SHIFT);
-  }
+	std::uintptr_t
+	to_uintptr() const
+	{
+		return this->m_marked;
+	}
+
+	std::uintptr_t &
+	as_uintptr()
+	{
+		return this->m_marked;
+	}
+
+	void
+	inc_idx(tag_type add = 1)
+	{
+		this->m_marked += (add << TAG_SHIFT);
+	}
 
 private:
-  std::uint64_t m_marked{ 0 };
+	std::uintptr_t m_marked { 0 };
 };
 }
 

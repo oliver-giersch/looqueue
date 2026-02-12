@@ -3,8 +3,8 @@
 
 #include <cstdint>
 
-/** reasonable effort approach to detect x86-64 target architecture, where the pre-fetcher fetches
- *  two consecutive cache lines by default */
+// Reasonable effort approach to detect x86-64 target architecture, where the
+// pre-fetcher fetches two consecutive cache lines by default.
 #if defined(__x86_64__) || defined(_M_AMD64)
 #define DESTRUCTIVE_INFERENCE_SIZE 128
 #else
@@ -12,6 +12,6 @@
 #endif
 
 constexpr std::size_t CACHE_LINE_ALIGN = DESTRUCTIVE_INFERENCE_SIZE;
-constexpr std::size_t CACHE_LINE_SIZE  = 64;
+constexpr std::size_t CACHE_LINE_SIZE = 64;
 
 #endif /* LOO_QUEUE_ALIGN_HPP */

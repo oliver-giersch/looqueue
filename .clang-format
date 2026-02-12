@@ -1,0 +1,34 @@
+BasedOnStyle: WebKit
+UseTab: Always
+IndentWidth: 2
+TabWidth: 2
+ContinuationIndentWidth: 2
+AlwaysBreakTemplateDeclarations: Yes
+AllowAllArgumentsOnNextLine: false
+AllowAllParametersOnNextLine: false
+AlwaysBreakAfterDefinitionReturnType: All
+BinPackArguments: true
+BinPackParameters: true
+ColumnLimit: 80
+PointerAlignment: Right
+BreakBeforeTernaryOperators: true
+AllowShortFunctionsOnASingleLine: Empty
+BreakBeforeBraces: Custom
+IndentNamespace: false
+NamespaceIndent: 0
+
+# public/private/protected start at column 0
+AccessModifierOffset: -2
+IndentAccessModifiers: false
+
+BraceWrapping:
+    AfterFunction: true
+    AfterClass: false
+    AfterStruct: false
+    AfterEnum: false
+    AfterNamespace: false
+    AfterControlStatement: false
+    AfterUnion: false
+    BeforeCatch: false
+    BeforeElse: false
+    IndentBraces: false
