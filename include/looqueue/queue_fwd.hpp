@@ -8,12 +8,11 @@
 
 namespace loo {
 namespace detail {
-	/* The result type for private `try_advance_head` method. */
+	/* The result type for `try_advance_head`. */
 	enum class advance_head_res_t { QUEUE_EMPTY, ADVANCED };
-	/* The result type for private `try_advance_tail` method. */
+	/* The result type for `try_advance_tail`. */
 	enum class advance_tail_res_t { ADVANCED, ADVANCED_AND_INSERTED };
 }
-
 template <typename T>
 class queue {
 	static_assert(sizeof(T *) == 8,
@@ -34,18 +33,20 @@ class queue {
 	using atomic_node_tag_ptr_t = std::atomic<node_tag_ptr_t>;
 
 	struct node_t;
-	using marked_ptr_t = typename detail::native_marked_ptr_t<node_t, TAG_BITS>;
+	using tag_ptr_t = typename detail::native_marked_ptr_t<node_t, TAG_BITS>;
 
-	/* The head node pointer & dequeue index pair slot. */
+	/* The head node pointer & dequeue index pair tag pointer. */
 	alignas(CACHE_LINE_ALIGN) atomic_node_tag_ptr_t m_head;
-	/* The tail node pointer & enqueue index pair slot. */
+	/* The tail node pointer & enqueue index pair tag pointer. */
 	alignas(CACHE_LINE_ALIGN) atomic_node_tag_ptr_t m_tail;
-	alignas(CACHE_LINE_ALIGN) std::atomic<node_t *> m_curr_tail;
+	/* The cached value of the last observed tail pointer. */
+	alignas(CACHE_LINE_ALIGN) std::atomic<node_t *> m_cached_tail;
 
 public:
 	using pointer = T *;
 
-	/** see PROOF.md for the reasoning behind these constants */
+	/** See PROOF.md for the reasoning behind these constants */
+
 	static constexpr std::size_t MAX_PRODUCER_THREADS
 		= (1ull << TAG_BITS) - NODE_SIZE + 1;
 	static constexpr std::size_t MAX_CONSUMER_THREADS
@@ -65,28 +66,31 @@ public:
 	queue &operator=(queue &&) = delete;
 
 private:
-	/*
-	 * Loops and attempts to CAS `expected` with `desired` until either the CAS
-	 * succeeds or the loaded pointer value (failure case) no longer matches
-	 * `old_node`
-	 */
-	static bool bounded_cas_loop(atomic_node_tag_ptr_t &node,
-		marked_ptr_t &expected, marked_ptr_t desired, const node_t *old_node,
-		std::memory_order order);
+	using advance_head_res_t = detail::advance_head_res_t;
+	using advance_tail_res_t = detail::advance_tail_res_t;
 
 	/* Returns true if the queue is empty. */
 	bool is_empty() noexcept;
-
-	/* Attempts to advance the head node to its successor, if there is one. */
-	detail::advance_head_res_t try_advance_head(marked_ptr_t curr, node_t *head,
-		std::size_t idx);
 
 	/*
 	 * Attempts to advance the tail node to its successor if there is one or
 	 * attempts to append a new node with `elem` stored in the first slot
 	 * otherwise.
 	 */
-	detail::advance_tail_res_t try_advance_tail(pointer elem, node_t *tail);
+	advance_tail_res_t try_advance_tail(tag_ptr_t tag_tail, node_t *tail,
+		pointer elem) noexcept;
+
+	/* Attempts to advance the head node to its successor, if there is one. */
+	advance_head_res_t try_advance_head(tag_ptr_t tag_head, node_t *head,
+		std::size_t idx) noexcept;
+
+	/*
+	 * Loops and attempts to CAS `expected` with `desired` until either the CAS
+	 * succeeds or the loaded pointer value (failure case) no longer matches
+	 * `old_node`
+	 */
+	static bool bounded_cas_loop(atomic_node_tag_ptr_t &node, tag_ptr_t &expected,
+		tag_ptr_t desired, const node_t *old_node, std::memory_order order);
 };
 }
 

@@ -15,229 +15,220 @@ namespace loo {
 namespace detail {
 	namespace slot {
 		using slot_t = std::uintptr_t;
+		using atomic_slot_t = std::atomic<slot_t>;
 
-		/** The slot state flag constants. */
-		enum flags_t : slot_t {
+		/* The slot state flag constants. */
+		enum flags : slot_t {
 			UNINIT = slot_t { 0 },
 			RESUME = slot_t { 0b01 },
 			READER = slot_t { 0b10 },
 			ELEM_MASK = ~(READER | RESUME),
 		};
 
+		/* Returns if the slot must be abandoned. */
 		static constexpr bool
 		is_abandoned(slot_t slot)
 		{
-			return slot == (flags_t::RESUME | flags_t::READER);
+			return slot == (flags::RESUME | flags::READER);
 		}
 
 		/* Returns true if a slot has been either consumed or abandoned */
 		static constexpr bool
 		is_consumed(slot_t slot)
 		{
-			/*
-			 * Check, if the READER bit is set and also any amount of element bits.
-			 * HACK: this is equivalent to `(slot & READER) && (slot & ELEM_MASK)`,
-			 * but GCC 15 compiles slightly better code with this version.
-			 */
+			// Check, if READER and any element bits are set.
+			// HACK: this is equivalent to `(slot & READER) && (slot & ELEM_MASK)`,
+			// but GCC 15 compiles slightly better code with this version.
 			return ((slot >= 4) & ((slot >> 1) & 0x1));
 		}
 
+		template <typename T>
+		static constexpr T
+		cast(slot_t slot)
+		{
+			const auto bits = slot & flags::ELEM_MASK;
+			return reinterpret_cast<T>(bits);
+		}
 	}
+
+	struct tls_cache {
+		void *node = nullptr;
+
+		~tls_cache() noexcept
+		{
+			if (this->node != nullptr)
+				::operator delete(this->node);
+		}
+
+		void *
+		alloc() noexcept
+		{
+			if (this->node == nullptr)
+				return nullptr;
+
+			const auto res = this->node;
+			this->node = nullptr;
+			return res;
+		}
+
+		bool
+		free(void *node) noexcept
+		{
+			if (this->node == nullptr) {
+				this->node = node;
+				return true;
+			}
+
+			return false;
+		}
+	};
 }
 
 template <typename T>
 struct queue<T>::node_t {
+	using ctrl_block_t = detail::ctrl_block_t;
+	using slot_t = detail::slot::slot_t;
+	using atomic_slot_t = detail::slot::atomic_slot_t;
 	using slot_array_t = std::array<atomic_slot_t, NODE_SIZE>;
 
-	/** The control block for coordinating memory reclamation. */
+	static inline thread_local detail::tls_cache cache {};
+
+	/* The control block for coordinating memory reclamation. */
 	std::atomic<detail::ctrl_block_t::scalar_t> ctrl {};
-	/** The pointer to this node's successor. */
+	/* The pointer to this node's successor. */
 	std::atomic<node_t *> next { nullptr };
-	/** The array of individual slots for storing elements + state bits. */
+	/* The array of individual slots for storing elements + state bits. */
 	slot_array_t slots;
 
-	/** The slot state flag constants. */
-	enum slot_flags_t : std::uintptr_t {
-		UNINIT = std::uintptr_t { 0 },
-		RESUME = std::uintptr_t { 0b01 },
-		READER = std::uintptr_t { 0b10 },
-		ELEM_MASK = ~(READER | RESUME),
-	};
-
-	static constexpr bool
-	is_abandoned(slot_t slot)
-	{
-		return slot == (slot_flags_t::RESUME | slot_flags_t::READER);
-	}
-
-	/* Returns true if a slot has been either consumed or abandoned */
-	static constexpr bool
-	is_consumed(slot_t slot)
-	{
-		/*
-		 * Check, if the READER bit is set and also any amount of element bits.
-		 * HACK: this is equivalent to `(slot & READER) && (slot & ELEM_MASK)`, but
-		 * GCC 15 compiles slightly better code with this version.
-		 */
-		return ((slot >= 4) & ((slot >> 1) & 0x1));
-	}
-
-	node_t()
-			: slots {}
-	{
-	}
+	node_t() : slots {} { }
 
 	explicit node_t(pointer e0)
 	{
 		this->slots[0].store(reinterpret_cast<slot_t>(e0), relaxed);
 		for (auto i = 1; i < NODE_SIZE; ++i) {
-			this->slots[i].store(0, relaxed);
+			this->slots[i].store(detail::slot::flags::UNINIT, relaxed);
 		}
 	}
 
-	bool
-	verify_slots_consumed(std::uintptr_t start_idx)
+	void *
+	operator new(std::size_t size)
 	{
-		for (auto idx = start_idx; idx < NODE_SIZE; ++idx) {
+		const auto node = cache.alloc();
+		if (node != nullptr)
+			return node;
+		return ::operator new(size);
+	}
+
+	void
+	operator delete(void *node)
+	{
+		if (cache.free(node))
+			return;
+		::operator delete(node);
+	}
+
+	pointer
+	consume_slot(std::size_t idx)
+	{
+		using detail::slot::flags;
+
+		slot_t state;
+		pointer res;
+
+		// We spin for a bounded number of times, in order to decrease the
+		// probability of prematurely abandoning a slot and causing (temporary)
+		// livelock situations.
+		auto &slot = this->slots[idx];
+		for (auto i = 0; i < 16; i++) {
+			state = slot.load(relaxed);
+			res = detail::slot::cast<pointer>(state);
+
+			if (res != nullptr) {
+				state = slot.fetch_add(flags::READER, acquire);
+				goto found;
+			}
+		}
+
+		// Check the extracted pointer bits, if the result is null, the deque
+		// thread must have set the READ bit before the pointer bits have been
+		// set by the corresponding enqueue operation, yet.
+		state = slot.fetch_add(flags::READER, acquire);
+		res = detail::slot::cast<pointer>(state);
+
+		// The RESUME bit may be set, but cleanup is not our responsibility,
+		// if the element bits were not yet set, in either case, the slot must
+		// be abandoned.
+		if (res == nullptr) [[unlikely]]
+			return nullptr;
+
+	found:
+		if (state & flags::RESUME) [[unlikely]]
+			this->try_reclaim(idx + 1);
+
+		return res;
+	}
+
+	void
+	try_reclaim(std::size_t start_idx)
+	{
+		if (!verify_slots_consumed(start_idx))
+			return;
+
+		const auto flag = ctrl_block_t::flags::SLOTS_VERIFIED;
+		const auto state = flag | this->ctrl.fetch_add(flag, acq_rel);
+		const auto block = std::bit_cast<ctrl_block_t>(state);
+
+		if (block.can_reclaim())
+			delete this;
+	}
+
+	bool
+	verify_slots_consumed(std::size_t start_idx)
+	{
+		using detail::slot::flags;
+
+		for (std::size_t idx = start_idx; idx < NODE_SIZE; ++idx) {
 			auto &slot = this->slots[idx];
 			// TODO: I am not actually sure, if lock; xadd is faster than cmpxchg?
 			// It is wait-free, but I don't know if it is also faster in case of no
 			// contention
-			const auto old = slot.fetch_add(slot_flags_t::RESUME, relaxed);
-			if (!is_consumed(old))
+			const auto old = slot.fetch_add(flags::RESUME, relaxed);
+			if (!detail::slot::is_consumed(old))
 				return false;
 		}
 
 		return true;
 	}
 
-	/*
-	 * checks if all slots are consumed before attempting reclamation
-	 */
-	void
-	try_reclaim(std::uint64_t start_idx)
+	bool
+	increment_enqueue_count(std::uint16_t total_count = 0)
 	{
-		// iterate all slots beginning at `start_idx`
-		for (std::uint64_t idx = start_idx; idx < NODE_SIZE; ++idx) {
-			auto &slot = this->slots[idx];
-			if (!is_consumed(slot.load(acquire))) {
-				// if the current slot has not already been consumed, set the RESUME
-				// bit, check again and abort the iteration if it has still not been
-				// consumed once the consuming thread(s) eventually arrive they will
-				// observe the RESUME bit and the thread arriving last will resume the
-				// procedure from the following slot on
-				if (!is_consumed(slot.fetch_add(slot_flags_t::RESUME, relaxed))) {
-					return;
-				}
-			}
-		}
+		constexpr auto kind = ctrl_block_t::counter_kind_t::ENQUEUE;
 
-		// set the ARR bit, since all slots have been visited, so all fast path
-		// enqueue and dequeue ops must have finished and are no longer accessing
-		// the node
-		const auto flags
-			= this->ctrl.reclaim_flags.fetch_add(reclaim_flags_t::ARR, acq_rel);
-		// if all 3 bits are set after setting the SLOTS bit, the node can be
-		// reclaimed
-		if (flags == (reclaim_flags_t::ENQ | reclaim_flags_t::DEQ)) {
-			delete this;
-		}
+		const auto flags = ctrl_block_t::add_flags<kind>(total_count);
+		const auto state = flags | this->ctrl.fetch_add(flags, acq_rel);
+		const auto block = std::bit_cast<ctrl_block_t>(state);
+
+		return block.can_reclaim();
 	}
 
-	/**
-	 * Atomically increases the current operations count in `tail_cnt` and sets
-	 * the final count if a value other than 0 is passed; if both counts are
-	 * equal, the ENQ bit is set and the node will be reclaimed, if the other 2
-	 * bits have already been set.
-	 */
-	void
-	increment_enqueue_count(std::uint64_t final_count = 0)
+	bool
+	increment_dequeue_count(bool verified, std::uint16_t total_count = 0)
 	{
-		constexpr auto EXPECTED_FLAGS = reclaim_flags_t::ARR | reclaim_flags_t::DEQ;
-		const auto counts = final_count == 0
-			? increment_counter(this->ctrl.tail_cnt)
-			: increment_counter_final(this->ctrl.tail_cnt,
-					static_cast<std::uint16_t>(final_count));
+		constexpr auto kind = ctrl_block_t::counter_kind_t::DEQUEUE;
 
-		this->try_reclaim_post_increment(counts, reclaim_flags_t::ENQ,
-			EXPECTED_FLAGS);
-	}
+		auto flags = ctrl_block_t::add_flags<kind>(total_count);
+		if (verified)
+			flags |= ctrl_block_t::flags::SLOTS_VERIFIED;
+		const auto state = flags | this->ctrl.fetch_add(flags, acq_rel);
+		const auto block = std::bit_cast<ctrl_block_t>(state);
 
-	/** atomically increases the current operations count in `head_cnt` and sets
-	 * the final count if a value other than 0 is passed; if both counts are
-	 * equal, the ENQ bit is set and the node will be reclaimed, if the other 2
-	 * bits have already been set. */
-	void
-	increment_dequeue_count(std::uint64_t final_count = 0)
-	{
-		constexpr auto EXPECTED_FLAGS = reclaim_flags_t::ARR | reclaim_flags_t::ENQ;
-		const auto counts = final_count == 0
-			? increment_counter(this->ctrl.head_cnt)
-			: increment_counter_final(this->ctrl.head_cnt,
-					static_cast<std::uint16_t>(final_count));
-
-		this->try_reclaim_post_increment(counts, reclaim_flags_t::DEQ,
-			EXPECTED_FLAGS);
-	}
-
-	void
-	increment_dequeue_count(bool is_slots_verified,
-		std::uintptr_t final_count = 0)
-	{
-		const auto counts = (final_count == 0)
-			? increment_counter(this->ctrl.head_cnt)
-			: increment_counter_final(this->ctrl.head_cnt,
-					static_cast<std::uint16_t>(final_count));
-	}
-
-private:
-	struct counts_t {
-		std::uint16_t curr_count, final_count;
-	};
-
-	/** increases the current count in `counter` */
-	static counts_t
-	increment_counter(std::atomic_uint32_t &counter)
-	{
-		const auto mask = counter.fetch_add(std::uint32_t { 1 }, release);
-		const auto final_count
-			= static_cast<std::uint16_t>(mask >> counter_flags_t::SHIFT);
-
-		return { static_cast<std::uint16_t>((mask & counter_flags_t::MASK) + 1),
-			final_count };
-	}
-
-	/** increases the current count in `counter` and also (atomically) sets the
-	 * final count */
-	static counts_t
-	increment_counter_final(std::atomic_uint32_t &counter,
-		std::uint16_t final_count)
-	{
-		const auto add = std::uint32_t { 1 }
-			+ (std::uint32_t { final_count } << counter_flags_t::SHIFT);
-		const auto mask = counter.fetch_add(add, release);
-
-		return { static_cast<std::uint16_t>((mask & counter_flags_t::MASK) + 1),
-			final_count };
-	}
-
-	/**
-	 * Compares the two counts, sets `flag_bit` in this node's reclaim flags and
-	 * proceeds to de-allocate the node if the reclaim flags before setting the
-	 * bit were equal to `expected_flags`.
-	 */
-	void
-	try_reclaim_post_increment(counts_t counts, std::uint8_t flag_bit,
-		std::uint8_t expected_flags)
-	{
-		if (counts.curr_count == counts.final_count) {
-			const auto flags = this->ctrl.reclaim_flags.fetch_add(flag_bit, acq_rel);
-			if (flags == expected_flags) {
-				delete this;
-			}
-		}
+		return block.can_reclaim();
 	}
 };
+
+// template <typename T>
+// thread_local detail::tls_cache queue<T>::node_t::cache {};
 }
 
 #endif /* LOO_QUEUE_NODE_HPP */

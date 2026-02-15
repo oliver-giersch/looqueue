@@ -21,6 +21,10 @@ NamespaceIndent: 0
 AccessModifierOffset: -2
 IndentAccessModifiers: false
 
+BreakConstructorInitializers: BeforeComma
+ConstructorInitializerAllOnOneLineOrOnePerLine: true
+AllowAllConstructorInitializersOnNextLine: false
+
 BraceWrapping:
     AfterFunction: true
     AfterClass: false

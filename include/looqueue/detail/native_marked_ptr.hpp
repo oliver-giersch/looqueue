@@ -33,14 +33,11 @@ public:
 
 	native_marked_ptr_t() = default;
 
-	explicit native_marked_ptr_t(std::uint64_t marked)
-			: m_marked { marked }
-	{
-	}
+	explicit native_marked_ptr_t(std::uintptr_t marked) : m_marked { marked } { }
 
 	explicit native_marked_ptr_t(pointer ptr, tag_type idx)
-			: native_marked_ptr_t(
-					reinterpret_cast<std::uintptr_t>(ptr) | idx << TAG_SHIFT)
+			: native_marked_ptr_t { idx << TAG_SHIFT
+				| reinterpret_cast<std::uintptr_t>(ptr) }
 	{
 	}
 
@@ -76,6 +73,18 @@ public:
 
 	void
 	inc_idx(tag_type add = 1)
+	{
+		this->m_marked += (add << TAG_SHIFT);
+	}
+
+	native_marked_ptr_t
+	operator+(tag_type add) const
+	{
+		return native_marked_ptr_t { this->m_marked + (add << TAG_SHIFT) };
+	}
+
+	void
+	operator+=(tag_type add)
 	{
 		this->m_marked += (add << TAG_SHIFT);
 	}
