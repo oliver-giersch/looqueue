@@ -21,6 +21,7 @@ public:
 	static constexpr std::uintptr_t TAG_MASK
 		= (std::uintptr_t { 1 } << TAG_BITS) - std::uintptr_t { 1 };
 	static constexpr std::uintptr_t PTR_MASK = ~TAG_MASK;
+	static constexpr std::uintptr_t ONE = 1ull;
 
 	struct decomposed_t {
 		pointer ptr;
@@ -29,10 +30,7 @@ public:
 
 	marked_ptr_t() = default;
 
-	explicit marked_ptr_t(std::uintptr_t marked)
-			: m_marked { marked }
-	{
-	}
+	explicit marked_ptr_t(std::uintptr_t marked) : m_marked { marked } { }
 
 	explicit marked_ptr_t(pointer ptr, tag_type idx)
 			: marked_ptr_t(reinterpret_cast<std::uintptr_t>(ptr) | idx)

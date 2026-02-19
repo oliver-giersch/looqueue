@@ -69,6 +69,8 @@ private:
 	using advance_head_res_t = detail::advance_head_res_t;
 	using advance_tail_res_t = detail::advance_tail_res_t;
 
+	static constexpr auto ONE = tag_ptr_t::ONE;
+
 	/* Returns true if the queue is empty. */
 	bool is_empty() noexcept;
 
@@ -83,6 +85,12 @@ private:
 	/* Attempts to advance the head node to its successor, if there is one. */
 	advance_head_res_t try_advance_head(tag_ptr_t tag_head, node_t *head,
 		std::size_t idx) noexcept;
+
+	/* Loops until the queue's tail is updated by any thread. */
+	bool cas_tail(tag_ptr_t &expected, tag_ptr_t desired, node_t *tail);
+
+	/* Loops until the queue's head is updated by any thread. */
+	bool cas_head(tag_ptr_t &expected, tag_ptr_t desired, node_t *head);
 
 	/*
 	 * Loops and attempts to CAS `expected` with `desired` until either the CAS

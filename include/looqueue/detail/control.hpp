@@ -10,33 +10,40 @@ namespace detail {
 	struct ctrl_block_t {
 		using scalar_t = std::uint64_t;
 
-		enum counter_kind_t : std::uint64_t {
-			ENQUEUE = 4,
-			DEQUEUE = ENQUEUE + 30,
-		};
+		enum counter_kind_t : std::uint64_t { ENQUEUE, DEQUEUE };
 
 		enum flags : std::uint64_t {
 			SLOTS_VERIFIED = 0x1,
 		};
 
-		static constexpr std::uint64_t TOTAL_SHIFT = 15;
-
 		template <counter_kind_t kind>
 		static inline constexpr uint64_t
-		add_flags(std::uint16_t total_count = 0)
+		add_flags(bool is_verified, std::uint16_t total_count = 0)
 		{
-			const auto current_shift = static_cast<std::uint64_t>(kind);
-			const auto current = std::uint64_t { 1 } << current_shift;
-			const auto total_shift = current_shift + TOTAL_SHIFT;
+			ctrl_block_t block {};
 
-			return (std::uint64_t { total_count } << total_shift) + current;
+			if (is_verified)
+				block.flags = flags::SLOTS_VERIFIED;
+
+			switch (kind) {
+			case counter_kind_t::ENQUEUE:
+				block.enqueue_current = 1;
+				block.enqueue_total = total_count;
+				break;
+			case counter_kind_t::DEQUEUE:
+				block.dequeue_current = 1;
+				block.dequeue_total = total_count;
+				break;
+			}
+
+			return std::bit_cast<std::uint64_t>(block);
 		}
 
-		uint8_t flags : 4;
-		uint16_t enqueue_current : 15;
-		uint16_t enqueue_total : 15;
-		uint16_t dequeue_current : 15;
-		uint16_t dequeue_total : 15;
+		std::uint64_t flags : 4;
+		std::uint64_t enqueue_current : 15;
+		std::uint64_t enqueue_total : 15;
+		std::uint64_t dequeue_current : 15;
+		std::uint64_t dequeue_total : 15;
 
 		bool
 		can_reclaim() const

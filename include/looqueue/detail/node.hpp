@@ -53,6 +53,7 @@ namespace detail {
 
 	struct tls_cache {
 		void *node = nullptr;
+		bool clean = false;
 
 		~tls_cache() noexcept
 		{
@@ -60,22 +61,24 @@ namespace detail {
 				::operator delete(this->node);
 		}
 
-		void *
+		std::pair<void *, bool>
 		alloc() noexcept
 		{
 			if (this->node == nullptr)
-				return nullptr;
+				return { nullptr, false };
 
-			const auto res = this->node;
+			const auto res = std::make_pair(this->node, this->clean);
 			this->node = nullptr;
+			this->clean = false;
 			return res;
 		}
 
 		bool
-		free(void *node) noexcept
+		free(void *node, bool is_clean = false) noexcept
 		{
 			if (this->node == nullptr) {
 				this->node = node;
+				this->clean = is_clean;
 				return true;
 			}
 
@@ -98,33 +101,32 @@ struct queue<T>::node_t {
 	/* The pointer to this node's successor. */
 	std::atomic<node_t *> next { nullptr };
 	/* The array of individual slots for storing elements + state bits. */
-	slot_array_t slots;
+	slot_array_t slots {};
 
-	node_t() : slots {} { }
-
-	explicit node_t(pointer e0)
+	static node_t *
+	alloc()
 	{
-		this->slots[0].store(reinterpret_cast<slot_t>(e0), relaxed);
-		for (auto i = 1; i < NODE_SIZE; ++i) {
-			this->slots[i].store(detail::slot::flags::UNINIT, relaxed);
-		}
-	}
+		auto [node, is_clean] = cache.alloc();
+		if (node != nullptr && !is_clean)
+			new (node) node_t {};
+		else if (node == nullptr)
+			node = new node_t {};
 
-	void *
-	operator new(std::size_t size)
-	{
-		const auto node = cache.alloc();
-		if (node != nullptr)
-			return node;
-		return ::operator new(size);
+		return reinterpret_cast<node_t *>(node);
 	}
 
 	void
-	operator delete(void *node)
+	free(bool is_clean)
 	{
-		if (cache.free(node))
+		if (cache.free(this, is_clean))
 			return;
-		::operator delete(node);
+		delete this;
+	}
+
+	void
+	init(queue::pointer elem)
+	{
+		this->slots[0] = reinterpret_cast<slot_t>(elem);
 	}
 
 	pointer
@@ -168,6 +170,15 @@ struct queue<T>::node_t {
 		return res;
 	}
 
+	/*
+	 * NOTE: bitwise-add and bitwise-or behave exactly the same, as long as
+	 * there is no bitwise carry.
+	 * As long as we can guarantee, that we never add a 1 bit to another 1 bit,
+	 * FAA can be used instead of FOR.
+	 * This is useful, because FOR is generally implemented as a CAS-loop, even
+	 * on x86-64.
+	 */
+
 	void
 	try_reclaim(std::size_t start_idx)
 	{
@@ -175,11 +186,11 @@ struct queue<T>::node_t {
 			return;
 
 		const auto flag = ctrl_block_t::flags::SLOTS_VERIFIED;
-		const auto state = flag | this->ctrl.fetch_add(flag, acq_rel);
+		const auto state = flag + this->ctrl.fetch_add(flag, acq_rel);
 		const auto block = std::bit_cast<ctrl_block_t>(state);
 
 		if (block.can_reclaim())
-			delete this;
+			this->free(false);
 	}
 
 	bool
@@ -189,9 +200,6 @@ struct queue<T>::node_t {
 
 		for (std::size_t idx = start_idx; idx < NODE_SIZE; ++idx) {
 			auto &slot = this->slots[idx];
-			// TODO: I am not actually sure, if lock; xadd is faster than cmpxchg?
-			// It is wait-free, but I don't know if it is also faster in case of no
-			// contention
 			const auto old = slot.fetch_add(flags::RESUME, relaxed);
 			if (!detail::slot::is_consumed(old))
 				return false;
@@ -205,30 +213,25 @@ struct queue<T>::node_t {
 	{
 		constexpr auto kind = ctrl_block_t::counter_kind_t::ENQUEUE;
 
-		const auto flags = ctrl_block_t::add_flags<kind>(total_count);
-		const auto state = flags | this->ctrl.fetch_add(flags, acq_rel);
+		const auto flags = ctrl_block_t::add_flags<kind>(false, total_count);
+		const auto state = flags + this->ctrl.fetch_add(flags, acq_rel);
 		const auto block = std::bit_cast<ctrl_block_t>(state);
 
 		return block.can_reclaim();
 	}
 
 	bool
-	increment_dequeue_count(bool verified, std::uint16_t total_count = 0)
+	increment_dequeue_count(bool is_verified, std::uint16_t total_count = 0)
 	{
 		constexpr auto kind = ctrl_block_t::counter_kind_t::DEQUEUE;
 
-		auto flags = ctrl_block_t::add_flags<kind>(total_count);
-		if (verified)
-			flags |= ctrl_block_t::flags::SLOTS_VERIFIED;
-		const auto state = flags | this->ctrl.fetch_add(flags, acq_rel);
+		const auto flags = ctrl_block_t::add_flags<kind>(is_verified, total_count);
+		const auto state = flags + this->ctrl.fetch_add(flags, acq_rel);
 		const auto block = std::bit_cast<ctrl_block_t>(state);
 
 		return block.can_reclaim();
 	}
 };
-
-// template <typename T>
-// thread_local detail::tls_cache queue<T>::node_t::cache {};
 }
 
 #endif /* LOO_QUEUE_NODE_HPP */

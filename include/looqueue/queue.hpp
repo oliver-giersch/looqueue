@@ -44,7 +44,7 @@ queue<T>::enqueue(queue::pointer elem)
 		// Increment the enqueue index, retrieve the tail pointer and
 		// previous index value.
 		// See PROOF.md regarding the (im)possibility of overflows.
-		const auto tag_tail = tag_ptr_t { this->m_tail.fetch_add(1, acquire) };
+		const auto tag_tail = tag_ptr_t { this->m_tail.fetch_add(ONE, acquire) };
 		const auto [tail, idx] = tag_tail.decompose();
 
 		if (idx < NODE_SIZE) [[likely]] {
@@ -100,7 +100,7 @@ typename queue<T>::pointer
 queue<T>::dequeue()
 {
 	while (true) {
-		// check if the queue is empty
+		// Check, if the queue is empty.
 		if (this->is_empty()) {
 			return nullptr;
 		}
@@ -108,7 +108,7 @@ queue<T>::dequeue()
 		// Increment the dequeue index, retrieve the head pointer and previous
 		// index value.
 		// See PROOF.md regarding the (im)possibility of overflows.
-		const auto tag_head = tag_ptr_t { this->m_head.fetch_add(1, acquire) };
+		const auto tag_head = tag_ptr_t { this->m_head.fetch_add(ONE, acquire) };
 		const auto [head, idx] = tag_head.decompose();
 
 		if (idx < NODE_SIZE) [[likely]] {
@@ -122,8 +122,10 @@ queue<T>::dequeue()
 
 			return res;
 		} else {
-			// ** slow path ** the current head node has been fully consumed and must
-			// be replaced by its successor, if there is one
+			// ** slow path ** The current head node has been fully
+			// consumed (i.e., dequeue operations for every slot have at least
+			// started and incremented the dequeue index) and must be replaced
+			// by its successor, if there already is one.
 			switch (this->try_advance_head(tag_head + 1, head, idx)) {
 			case advance_head_res_t::ADVANCED:
 				continue;
@@ -147,11 +149,9 @@ queue<T>::is_empty() noexcept
 	const auto [head, deq_idx] = tag_ptr_t { tag_head }.decompose();
 
 	// Load the cached tail since it hass less contention than the actual tail.
-	// Uh-oh, the cached tail should be expected to lag behind the real tail ...
-	// but what if it lags behind the head!? Then we might assess !empty, even
-	// though there's no ... no wait, there is a tail node, otherwise it would
-	// not been advanced to it.
-	// Is the opposite possible?
+	// The cached tail is allowed to lag behind the actual tail, it is only used
+	// as a means to avoid having to read the highly contended tail variable, in
+	// cases where there is more than one node in the list.
 	auto cached_tail = this->m_cached_tail.load(relaxed);
 	if (head != cached_tail)
 		return false;
@@ -178,41 +178,56 @@ queue<T>::try_advance_tail(queue::tag_ptr_t tag_tail, queue::node_t *tail,
 		node_t *node;
 		std::uint16_t total_count = 0;
 
+		// Whenever the parent function returns, we must update the node's
+		// count of concluded operations and possibly reclaim the node.
 		~reclaimer_t() noexcept
 		{
 			if (node->increment_enqueue_count(total_count))
-				delete node;
+				node->free(false);
 		}
 	};
 
 	auto reclaimer = reclaimer_t { tail };
 	auto advanced = advance_tail_res_t::ADVANCED;
+	auto success = false;
 
-	/*auto curr = tag_ptr_t { this->m_tail.load(relaxed) };
-	if (tail != curr.decompose_ptr()) {
-		tail->increment_enqueue_count();
-		return detail::advance_tail_res_t::ADVANCED;
-	}*/
+	// Optimistically allocate a new node and try to append it to the last known
+	// tail node.
+	// This may fail if another enqueue thread manages to succeed here
+	// before us.
+	// In this case we must free the allocated node which is cheap because it is
+	// simply cached in thread-local storage.
+	node_t *next = nullptr;
+	const auto node = node_t::alloc();
+	node->init(elem);
 
-	auto next = tail->next.load(relaxed);
-	if (next == nullptr) {
-		const auto node = new node_t { elem };
-		const auto inserted
-			= tail->next.compare_exchange_strong(next, node, release, relaxed);
-
-		if (inserted) {
-			next = node;
-			advanced = advance_tail_res_t::ADVANCED_AND_INSERTED;
-		} else
-			delete node;
-	}
+	success = tail->next.compare_exchange_strong(next, node, release, relaxed);
+	if (success) {
+		next = node;
+		advanced = advance_tail_res_t::ADVANCED_AND_INSERTED;
+	} else
+		node->free(true);
 
 	// Now advance the queue's tail pointer to either our allocated and inserted
 	// node or the actual next node observed during the previous CAS.
-	const auto res = bounded_cas_loop(this->m_tail, tag_tail,
-		tag_ptr_t { next, 1 }, tail, release);
-	if (res)
+	// If we succeed, we have conclusively observed the final reference to the
+	// previous tail node and therefore now know the total count of all enqueue
+	// operations that may ever have held a live reference to this node and we
+	// know that no future references are possible.
+	// This total count must be entered into the node's control block, as it
+	// represents the number of operations that must be guaranteed to have
+	// concluded and are no longer accessing the node (which they denote by
+	// increasing the respective counter in the control block).
+	// The operation that suceeds here does *both* atomically: it increases the
+	// counter of concluded operations and enters the total count of all
+	// operations that need to be accounted for eventually.
+	if (this->cas_tail(tag_tail, tag_ptr_t { next, 1 }, tail))
 		reclaimer.total_count = tag_tail.decompose_tag() - NODE_SIZE;
+
+	// Finally, try update the cached tail pointer.
+	// We don't care, which thread succeeds in advancing the cached tail.
+	auto expected = tail;
+	this->m_cached_tail.compare_exchange_strong(expected, next, release, relaxed);
 
 	return advanced;
 }
@@ -229,9 +244,10 @@ queue<T>::try_advance_head(queue::tag_ptr_t tag_head, queue::node_t *head,
 
 		~reclaimer_t() noexcept
 		{
-			const auto verified = (verify) ? node->verify_slots_consumed(0) : false;
-			if (node->increment_dequeue_count(verified, total_count))
-				delete node;
+			const auto is_verified
+				= (verify) ? node->verify_slots_consumed(0) : false;
+			if (node->increment_dequeue_count(is_verified, total_count))
+				node->free(false);
 		}
 	};
 
@@ -247,12 +263,28 @@ queue<T>::try_advance_head(queue::tag_ptr_t tag_head, queue::node_t *head,
 	const auto next = head->next.load(acquire);
 
 	// Attempt to advance the head
-	if (bounded_cas_loop(this->m_head, tag_head, tag_ptr_t { next, 0 }, head,
-				release)) {
+	if (this->cas_head(tag_head, tag_ptr_t { next, 0 }, head))
 		reclaimer.total_count = tag_head.decompose_tag() - NODE_SIZE;
-	}
 
 	return advance_head_res_t::ADVANCED;
+}
+
+template <typename T>
+bool
+queue<T>::cas_tail(queue::tag_ptr_t &expected, queue::tag_ptr_t desired,
+	queue::node_t *tail)
+{
+	return queue::bounded_cas_loop(this->m_tail, expected, desired, tail,
+		release);
+}
+
+template <typename T>
+bool
+queue<T>::cas_head(queue::tag_ptr_t &expected, queue::tag_ptr_t desired,
+	queue::node_t *head)
+{
+	return queue::bounded_cas_loop(this->m_head, expected, desired, head,
+		release);
 }
 
 template <typename T>

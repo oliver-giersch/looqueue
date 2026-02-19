@@ -24,7 +24,7 @@ public:
 	static constexpr std::uintptr_t TAG_MASK = std::uintptr_t { 0xFFFF }
 		<< TAG_SHIFT;
 	static constexpr std::uintptr_t PTR_MASK = ~TAG_MASK;
-	static constexpr std::uintptr_t INCREMENT = 1ull << TAG_SHIFT;
+	static constexpr std::uintptr_t ONE = 1ull << TAG_SHIFT;
 
 	struct decomposed_t {
 		pointer ptr;
