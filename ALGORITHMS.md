@@ -1,29 +1,34 @@
 # 1. Types & Constants
 
 ```
-struct Node<T>:
-..[Atomic<T*>; N] slots
-..Atomic<Node*>   next
-..ControlBlock    ctrl
-
-struct ControlBlock:
-..Atomic<(u16, u16)> head_mask
-..Atomic<(u16, u16)> tail_mask
-..Atomic<u8>         reclaim
-
 type TagPtr<T> = (T* ptr, u16 idx)
 
-enum AdvHead { QUEUE_EMPTY, ADVANCED }
-enum AdvTail { ADV_AND_INSRT, ADV_ONLY }
+struct Queue<T>:
+..TagPtr<T> head
+..TagPtr<T> tail
+
+struct Node<T>:
+..[Atomic<u64>; N] slots
+..Atomic<Node*>   next
+..Atomic<Control> ctrl
+
+struct Control:
+..u64 flags      : 4
+..u64 head_count : 15
+..u64 head_total : 15
+..u64 tail_count : 15
+..u64 tail_total : 15
+
+enum HeadRes { EMPTY, ADVANCED }
+enum TailRes { INSERTED, ADVANCED }
+enum Result { EMPTY, ADV, INSRT }
 
 const RESUME   = 0b001
 const WRITER   = 0b010
 const READER   = 0b100
 const CONSUMED = READER | WRITER
 
-const SLOT = 0b001
-const DEQ  = 0b010
-const ENQ  = 0b100
+const SLOTS = 0b001
 ```
 
 # 2. Enqueue
@@ -32,52 +37,45 @@ const ENQ  = 0b100
 
 ```
 # method of Queue<T>
- E1 fn enqueue(T* el) -> void:
- E2 loop:
- E3 ..[t,i] = tail.fetch_add(1)
- E4 ..if i < N:
- E5 ....prev = t->slots[i].fetch_add(
- E6 ........(u64) el) | WRITER)
- E7 ....if prev <= RESUME: return
- E8 ....if prev == (READER | RESUME):
- E9 ......t->try_reclaim(i+1)
-E10 ....continue
-E11 ..else:
-E12 ....switch (adv_tail(el, t)):
-E13 ......case ADV_AND_INSRT: return
-E14 ......case ADV_ONLY: continue
+    fn enqueue(T* it) -> void:
+ E1 loop:
+ E2 ..[t,i] = tail.fetch_add(1)
+ E3 ..if i < N:
+ E4 ....slot = (u64) it | WRITER
+ E5 ....prev = t->slots[i].fetch_add(slot)
+ E6 ....if prev <= RESUME: return
+ E7 ....if prev == (READER | RESUME):
+ E8 ......t->try_reclaim(i+1)
+ E9 ....continue
+E10 ..else:
+E11 ....switch (adv_tail([t,i+1], t, it)):
+E12 ......case INSRT: return
+E13 ......case ADV:   continue
 ```
 
 ## 2.2 Slow Path (Advance Tail)
 
 ```
-# method of Queue<T>
- T1 fn adv_tail(T* el, Node<T>* t) -> AdvTail:
- T2 loop:
- T3 ..curr = tail.load()
- T4 ..if t != curr.ptr:
- T5 ....t->incr_enq_count()
- T6 ....return ADV_ONLY
- T7 ..next = t->next.load()
- T8 ..if next == NULL:
- T9 ....node = alloc_node(el)
-T10 ....if t->next.cas(NULL,node):
-T11 ......while !tail.cas(curr, [node,1]):
-T12 ........if curr.ptr != t:
-T13 ..........t->incr_enq_count()
-T14 ..........return ADV_AND_INSRT
-T15 ......t->incr_enq_count(curr.idx-N)
-T16 ......return ADV_AND_INSRT
-T17 ....else:
-T18 ......dealloc_node(node)
-T19 ......continue
-T20 ..else:
-T21 ....while !tail.cas(curr, [next,1]):
-T22 ......if curr.ptr != t:
-T23 ........t->incr_enq_count()
-T24 ........return ADV_ONLY
-T25 ....t->incr_enq_count(curr.idx-N)
-T26 ....return ADV_ONLY
+fn adv_tail(
+    TagPtr<T> tag_tail,
+    Node<T>*  t,
+    T*        it
+) -> Result:
+ T1 ..total = 0
+ T2 ..node = alloc_node(it)
+ T3 ..next = NULL
+ T4 ..if t->next.cas(&next,node):
+ T5 ....next = node
+ T6 ....res = INSRT
+ T7 ..else:
+ T8 ....free_node(node)
+ T9 ....res = ADV
+T10 ..while !cas_tail(&tag_tail, [next, 1]):
+T11 ....if tag_tail.ptr != t: goto out
+T12 ..total = tag_tail.idx-N
+T13 out:
+T14 ..t->incr_enq_count(total)
+T15 ..return res
 ```
 
 # 3. Dequeue
@@ -85,46 +83,48 @@ T26 ....return ADV_ONLY
 ## 3.1 Fast Path
 
 ```
-# method of Queue<T>
- D1 fn dequeue() -> T*:
- D2 loop:
- D3 ..curr = head.load()
- D4 ..[h,i] = curr
- D5 ..[t,ti] = tail.load()
- D6 ..if (i >= N || i >= ti) && h == t:
- D7 ....return NULL
- D8 ..[h,i] = head.fetch_add(1)
- D9 ..if i < N:
-D10 ....prev = h->slots[i].fetch_add(READER)
-D11 ....if i == N-1:
-D12 ......h->try_reclaim(0)
-D13 ....if prev & WRITER != 0:
-D14 ......if prev & RESUME != 0:
-D15 ........h->try_reclaim(i+1)
-D16 ......return (T*) (prev & PTR_MASK)
-D17 ....continue
-D18 ..else:
-D19 ....switch (adv_head(curr, h, t)):
-D20 ......case ADVANCED: continue
-D21 ......case QUEUE_EMPTY: return NULL
+    fn dequeue() -> T*:
+ D1 loop:
+ D2 ..tag_head = head.load()
+ D3 ..[h,di] = tag_head
+ D4 ..[t,ei] = tail.load()
+ D5 ..if h == t && (di >= N || ei <= di):
+ D6 ....return NULL
+ D7 ..[h,i] = head.fetch_add(1)
+ D8 ..if i < N:
+ D9 ....prev = h->slots[i].fetch_add(READER)
+D10 ....if prev & WRITER != 0:
+D11 ......if prev & RESUME != 0:
+D12 ........h->try_reclaim(i+1)
+D13 ......return (T*) (prev & PTR_MASK)
+D14 ....continue
+D15 ..else:
+D16 ....switch (adv_head([h,i+1], h, t)):
+D17 ......case EMPTY: return NULL
+D18 ......case ADV:   continue
+
 ```
 
 ## 3.2 Slow Path (Advance Head)
 
 ```
-# method of Queue<T>
- H1 fn adv_head(TagPtr<T> curr, Node<T>* h, Node<T>* t) -> AdvHead
- H2 ..next = h->next.load()
- H3 ..if next == NULL || t == h:
- H4 ....h->incr_deq_count()
- H5 ....return QUEUE_EMPTY
- H6 ..curr.idx += 1
- H7 ..while !head.cas(curr, [next,0]):
- H8 ....if curr.ptr != h:
- H9 ......h->incr_deq_count()
-H10 ......return ADVANCED
-H11 ..h->incr_deq_count(curr.idx-N)
-H12 ..return ADVANCED
+    fn adv_head(
+      TagPtr<T> curr,
+      Node<T>* h,
+      Node<T>* t
+    ) -> HeadRes
+ H1 ..[t,_] = tail.load()
+ H2 ..if h == t:
+ H3 ....res = EMPTY
+ H4 ....goto out
+ H5 ..next = h->next.load()
+ H6 ..while !cas_head(&tag_head, [next,0]):
+ H7 ....if tag_head.ptr != h: goto out
+ H8 ..total = tag_head.idx-N
+ H9 ..res = ADVANCED
+H10 out:
+H11 ..h->incr_deq_count(total)
+H12 ..return res
 ```
 
 ## 4. Memory Management

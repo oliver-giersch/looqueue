@@ -126,7 +126,8 @@ queue<T>::dequeue()
 			// consumed (i.e., dequeue operations for every slot have at least
 			// started and incremented the dequeue index) and must be replaced
 			// by its successor, if there already is one.
-			switch (this->try_advance_head(tag_head + 1, head, idx)) {
+			const auto verify = idx == NODE_SIZE;
+			switch (this->try_advance_head(tag_head + 1, head, verify)) {
 			case advance_head_res_t::ADVANCED:
 				continue;
 			case advance_head_res_t::QUEUE_EMPTY:
@@ -235,7 +236,7 @@ queue<T>::try_advance_tail(queue::tag_ptr_t tag_tail, queue::node_t *tail,
 template <typename T>
 detail::advance_head_res_t
 queue<T>::try_advance_head(queue::tag_ptr_t tag_head, queue::node_t *head,
-	std::size_t idx) noexcept
+	bool verify) noexcept
 {
 	struct reclaimer_t {
 		node_t *node;
@@ -251,7 +252,7 @@ queue<T>::try_advance_head(queue::tag_ptr_t tag_head, queue::node_t *head,
 		}
 	};
 
-	reclaimer_t reclaimer { head, idx == NODE_SIZE };
+	reclaimer_t reclaimer { head, verify };
 
 	// We must make sure to not advance the head before the tail, even if the
 	// next tail node is already published, as this would break the empty check.
@@ -262,7 +263,8 @@ queue<T>::try_advance_head(queue::tag_ptr_t tag_head, queue::node_t *head,
 	// The the head's next pointer, which was set before the tail was updated.
 	const auto next = head->next.load(acquire);
 
-	// Attempt to advance the head
+	// Attempt to advance the head. If we succeed, set the total dequeue count
+	// in the node's control block on return.
 	if (this->cas_head(tag_head, tag_ptr_t { next, 0 }, head))
 		reclaimer.total_count = tag_head.decompose_tag() - NODE_SIZE;
 

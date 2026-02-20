@@ -16,6 +16,7 @@ AllowShortFunctionsOnASingleLine: Empty
 BreakBeforeBraces: Custom
 IndentNamespace: false
 NamespaceIndent: 0
+PenaltyBreakAssignment: 0
 
 # public/private/protected start at column 0
 AccessModifierOffset: -2

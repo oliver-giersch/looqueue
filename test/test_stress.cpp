@@ -18,7 +18,8 @@ int
 main()
 {
 	const std::size_t thread_count = 128;
-	const std::size_t count = 100'000;
+	const std::size_t count = 1'000'000;
+	const auto tenth = count / 10;
 
 	std::vector<elem_t> thread_elements {};
 	thread_elements.reserve(count);
@@ -44,8 +45,8 @@ main()
 
 			for (auto op = 0; op < count; ++op) {
 				if (is_first) {
-					if (op % 10'000 == 0)
-						std::cout << "progress: " << op / 1'000 << "%" << std::endl;
+					if (op % tenth == 0)
+						std::cout << "progress: " << (op * 10) / tenth << "%" << std::endl;
 				}
 
 				queue.enqueue(&thread_elements.at(op));

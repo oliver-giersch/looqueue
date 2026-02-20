@@ -79,14 +79,16 @@ We are thereby able to prove that an overflow of the index bits into the pointer
 
 **Proof.** Assume that the current value of the enqueue index is $N$, which means that there have been $N$ previous increments which resulted in fast path operations that can unconditionally enqueue another element or retry after concluding (e.g., due to having to abandon the reserved slot).
 Subsequently, there can hence be at most $P$ further concurrent enqueue attempts (one per producer thread), all of which must necessarily enter the slow path.
-Within that path there are four sub-paths, none of which permit a thread to exit it **and** then potentially observe and increment the previous $(tail, index)$ pair again.
-The sub-path beginning at line T4 can only be taken if the tail pointer has already been updated, in which case the enqueue index has also been reset and can not be incremented again.
-The sub-paths at lines T11 and T21 can likewise only result in an executing thread leaving the procedure if one of the CAS at either line has succeeded in updating the $(tail, index)$ pair.
-The sub-path at line T18 can never leave the procedure at all and can also be taken at most once per thread.
-In total, the index value can thus never exceed $P + N$.
-By equating this hard upper bound with the largest *possible* index value ($2^B - 1$), it can be concluded that with $P \leq 2^B - N - 1$ distinct producer threads the enqueue index can never overflow.
+There is no possibility for a thread to exit the slow path and observe and increment the previous $(tail,index)$ tuple again.
+The CAS at line T10 is repeated until the previous $(tail,index)$ is advanced by
+any thread in the same path.
+When that happens, $tail$ points at a different node and $index$ is reset to 1.
 
-**Definition 2.2** Let $C$ be number of *all* consumer threads accessing the same queue and $2^B - 1$ the largest possible integer value that fits into the tag bits of the composed $(head, index)$ pair without overflowing.
+Consequently, none of the at most $P$ enqueue attempts may ever observe the previous tuple or increment the associated index any further.
+In total, the index value can thus never exceed $P + N$.
+By equating this guaranteed upper bound with the largest *possible* index value ($2^B - 1$), it can be concluded that with $P \leq 2^B - N - 1$ distinct producer threads the enqueue index can never overflow.
+
+**Definition 2.2** Let $C$ be number of *all* consumer threads accessing the same queue and $2^B - 1$ the largest possible integer value that fits into the tag bits of the composed $(head, index)$ tuple without overflowing.
 
 **Lemma 2.2** The largest possible value the dequeue index can possibly assume is $2 \cdot C + N - 1$ and it follows, that with any $C \leq \frac{2^B - N - 1}{2}$ the dequeue index can never overflow.
 
@@ -94,13 +96,17 @@ By equating this hard upper bound with the largest *possible* index value ($2^B 
 Additionally, the queue's head and tail nodes currently point at the same node and the enqueue index is some value $E \ge N$, i.e., all slots have already been either written to or abandoned.
 Under any other conditions, the dequeue index can only grow up to $C + N$.
 
-Further assume that there are exactly $C$ subsequent concurrent dequeue attempts, all of which pass the *empty* check at line D6 before the first operation increments the dequeue index (otherwise all follow-on operations would not pass the check).
-All $C$ threads necessarily enter the slow path and perform a second *empty* check at line H3.
-Assuming that either no enqueue operation has appended a new node or that a new node has been appended but the tail pointer not yet been swung forward, all $C$ threads will assess the queue to be empty.
-The value of the dequeue index is now $C + N$, but all $C$ consumers may yet initiate another dequeue operation.
-However, none may pass the first *empty* check and increment the dequeue index until the queue's tail pointer has been updated by a corresponding enqueue operation.
-Since the tail pointer is exclusively updated only *after* a new node has already been appended (see lines T10, T11 and T21), when any of the $C$ additional operations are permitted to move past the *empty* check at line D6, it is guaranteed that the current head's next pointer is no longer `NULL` and hence, none of these threads can ever fail the second *empty* check at line H3 again for the same $(head, index)$ pair.
-Consequently, all $C$ threads will remain in the slow path until the queue's head pointer is updated and the dequeue index is reset, in which case the previous value can't be incremented any further.
+Further assume that there are exactly $C$ subsequent concurrent dequeue attempts.
+All must pass the *empty* check at line D5 before the first operation increments the $(head,index)$ pair index, as otherwise all follow-on operations would observe an empty queue without incrementing the index.
+All $C$ threads must subsequently enter the slow path and perform a second *empty* check at line H2.
+Assuming that either no enqueue operation has appended a new tail node or that a new node has been appended but the tail pointer not yet been swung forward, all $C$ threads will assess the queue to be empty.
+The value of the dequeue index is now $N + C$, but all $C$ consumers may yet initiate another dequeue operation for the same $(head,index)$ tuple.
+However, none may pass the first *empty* check at line D5 again or increment the dequeue index *until* the queue's tail pointer has been updated by a corresponding enqueue operation.
+The tail pointer is exclusively updated only *after* a new node has already been appended (see lines T4 and T10).
+Once any of the $C$ additional dequeue operation are permitted to move past the *empty* check at line D5, the current head node's next pointer is guaranteed to be no longer `NULL`.
+Hence, none of the $C$ additional threads can assess the queue empty at the second *empty* check at line H2 for the same $(head,index)$ tuple again.
+
+Consequently, all $C$ threads must remain in the slow path until the queue's head pointer is updated and the dequeue index is reset, in which case the previous value can not be incremented any further.
 Therefore, the dequeue index can not exceed $2 \cdot C + N$.
 As before, it can be concluded that with $C \leq \frac{2^{B} - N - 1}{2}$ consumer threads the dequeue index can never overflow.
 
@@ -109,8 +115,13 @@ As before, it can be concluded that with $C \leq \frac{2^{B} - N - 1}{2}$ consum
 Our queue has full non-blocking and lock-free progress guarantees.
 For the fast path and in the general case, *all* threads can make progress by simply inserting into or consuming from their reserved array slot.
 However, this can not be guaranteed, since it is possible for a slot having to be abandoned and both corresponding operations having to retry.
-This can, in fact, theoretically result in a temporary live-lock situation, in which all threads continuously have to abandon one slot after another.
-However, this live-lock can last at most for $N$ steps, after which the current node is drained and all dequeue operations have to conclude that the queue is empty, whereas at least one enqueue operation is guaranteed to be able to insert its element through the CAS at line T10, so at least one thread is able to make progress in a bounded number of steps.
+This may potentially result in a *temporary* live-lock situation, in which all threads continously must abandon one slot after another, if consumers consistently attempt to retrieve the enqueued element at line D7 *before* the corresponding enqueue operation is able to insert it at line E5.
+However, this live-lock can only last for at most $N$ steps, before the entire current head node is drained and all dequeue operations have to conclude the queue to be empty.
+At least one enqueue operation, however, is guaranteed to be able to insert its element by means of installing a new tail node with the CAS at line T4.
+Consequently, at least one thread is able to make progress in a bounded number of steps.
+Therefore, even in this pathological scenario lock-free progress guarantees apply.
+Note that this is a theoretical and highly unlikely scenario we have never observed in practice.
+Its probability could be even further reduced, by adding a bounded number of speculative checks in the dequeue procedure, before invalidating the slot.
 
 Threads entering the slow path, on the other hand, may not leave it again, until the desired (path-local) progress has been made by some thread, i.e., when the respective operation's node has been advanced.
 Therefore, threads may be required to loop inside this path in order to guarantee this property.

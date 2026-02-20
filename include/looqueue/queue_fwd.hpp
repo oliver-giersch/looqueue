@@ -84,7 +84,7 @@ private:
 
 	/* Attempts to advance the head node to its successor, if there is one. */
 	advance_head_res_t try_advance_head(tag_ptr_t tag_head, node_t *head,
-		std::size_t idx) noexcept;
+		bool verify) noexcept;
 
 	/* Loops until the queue's tail is updated by any thread. */
 	bool cas_tail(tag_ptr_t &expected, tag_ptr_t desired, node_t *tail);
