@@ -24,7 +24,7 @@ main()
 	std::vector<elem_t> thread_elements {};
 	thread_elements.reserve(count);
 
-	for (auto i = 0; i < count; ++i) {
+	for (std::size_t i = 0; i < count; ++i) {
 		thread_elements.push_back(i);
 	}
 
@@ -36,14 +36,14 @@ main()
 
 	loo::queue<elem_t> queue {};
 
-	for (auto thread = 0; thread < thread_count; ++thread) {
+	for (std::size_t thread = 0; thread < thread_count; ++thread) {
 		// Spawn producer threads.
 		threads.emplace_back([&, thread] {
 			const auto is_first = thread == 0;
 
 			barrier.arrive_and_wait();
 
-			for (auto op = 0; op < count; ++op) {
+			for (std::size_t op = 0; op < count; ++op) {
 				if (is_first) {
 					if (op % tenth == 0)
 						std::cout << "progress: " << (op * 10) / tenth << "%" << std::endl;

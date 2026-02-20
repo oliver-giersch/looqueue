@@ -11,8 +11,8 @@ looqueue = declare_dependency(
 
 threads = dependency('threads')
 
-test = executable(
-  'test',
+test_unit = executable(
+  'test_unit',
   'test/test.cpp',
   dependencies : [threads, looqueue]
 )
