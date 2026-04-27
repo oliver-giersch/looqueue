@@ -1,7 +1,7 @@
 cmake_minimum_required(VERSION 3.16)
 
 set(SAN "" CACHE STRING "Set of sanitizer flags to use (address or thread)")
-set_property(CACHE SANITIZER PROPERTY STRINGS address thread)
+set_property(CACHE SAN PROPERTY STRINGS address thread)
 
 if (SAN STREQUAL "address" OR SAN STREQUAL "")
     set(SAN_FLAGS "-fsanitize=address,leak,undefined")
