@@ -13,7 +13,7 @@ namespace loo::detail {
  * This may change in the future, if 5-level paging becomes more common.
  */
 template <typename T, std::uint8_t N>
-class native_marked_ptr_t final {
+class native_tag_ptr_t final {
 	static_assert(N <= 16, "only up to 16 tag bits allowed");
 
 public:
@@ -21,8 +21,8 @@ public:
 	using tag_type = std::uintptr_t;
 
 	static constexpr std::uintptr_t TAG_SHIFT = 64 - 16;
-	static constexpr std::uintptr_t TAG_MASK = std::uintptr_t { 0xFFFF }
-		<< TAG_SHIFT;
+	static constexpr std::uintptr_t TAG_MASK
+		= std::uintptr_t { 0xFFFF } << TAG_SHIFT;
 	static constexpr std::uintptr_t PTR_MASK = ~TAG_MASK;
 	static constexpr std::uintptr_t ONE = 1ull << TAG_SHIFT;
 
@@ -31,12 +31,12 @@ public:
 		tag_type idx;
 	};
 
-	native_marked_ptr_t() = default;
+	native_tag_ptr_t() = default;
 
-	explicit native_marked_ptr_t(std::uintptr_t marked) : m_marked { marked } { }
+	explicit native_tag_ptr_t(std::uintptr_t marked) : m_marked { marked } { }
 
-	explicit native_marked_ptr_t(pointer ptr, tag_type idx)
-			: native_marked_ptr_t { idx << TAG_SHIFT
+	explicit native_tag_ptr_t(pointer ptr, tag_type idx)
+			: native_tag_ptr_t { idx << TAG_SHIFT
 				| reinterpret_cast<std::uintptr_t>(ptr) }
 	{
 	}
@@ -77,10 +77,10 @@ public:
 		this->m_marked += (add << TAG_SHIFT);
 	}
 
-	native_marked_ptr_t
+	native_tag_ptr_t
 	operator+(tag_type add) const
 	{
-		return native_marked_ptr_t { this->m_marked + (add << TAG_SHIFT) };
+		return native_tag_ptr_t { this->m_marked + (add << TAG_SHIFT) };
 	}
 
 	void

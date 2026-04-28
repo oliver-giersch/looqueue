@@ -4,7 +4,7 @@
 #include <atomic>
 
 #include "align.hpp"
-#include "detail/native_marked_ptr.hpp"
+#include "detail/native_tag_ptr.hpp"
 
 namespace loo {
 namespace detail {
@@ -33,7 +33,7 @@ class queue {
 	using atomic_node_tag_ptr_t = std::atomic<node_tag_ptr_t>;
 
 	struct node_t;
-	using tag_ptr_t = typename detail::native_marked_ptr_t<node_t, TAG_BITS>;
+	using tag_ptr_t = typename detail::native_tag_ptr_t<node_t, TAG_BITS>;
 
 	/* The head node pointer & dequeue index pair tag pointer. */
 	alignas(CACHE_LINE_ALIGN) atomic_node_tag_ptr_t m_head;

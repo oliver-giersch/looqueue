@@ -12,7 +12,7 @@ namespace loo::detail {
  * pointed at must have 2^N alignment.
  */
 template <typename T, std::uint8_t N>
-class marked_ptr_t final {
+class tag_ptr_t final {
 public:
 	using pointer = T *;
 	using tag_type = std::uintptr_t;
@@ -28,12 +28,12 @@ public:
 		tag_type idx;
 	};
 
-	marked_ptr_t() = default;
+	tag_ptr_t() = default;
 
-	explicit marked_ptr_t(std::uintptr_t marked) : m_marked { marked } { }
+	explicit tag_ptr_t(std::uintptr_t marked) : m_marked { marked } { }
 
-	explicit marked_ptr_t(pointer ptr, tag_type idx)
-			: marked_ptr_t(reinterpret_cast<std::uintptr_t>(ptr) | idx)
+	explicit tag_ptr_t(pointer ptr, tag_type idx)
+			: tag_ptr_t(reinterpret_cast<std::uintptr_t>(ptr) | idx)
 	{
 	}
 
