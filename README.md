@@ -7,9 +7,24 @@ The queue is implemented as a header-only library.
 
 ## Build
 
+With CMake:
+
 ```console
 $ cmake -S . -B build
 $ cmake --build build
+```
+
+With meson:
+
+```console
+$ meson build
+$ meson compile -C build
+```
+
+With GNU make:
+
+```console
+$ make
 ```
 
 ## License
