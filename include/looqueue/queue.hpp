@@ -58,13 +58,12 @@ queue<T>::enqueue(queue::pointer elem)
 			// word. Since only one operation ever writes to the higher bits of
 			// a slot, FAA and FOR are logically equivalent here.
 			const auto slot = tail->slots[idx].fetch_add(bits, release);
-			if (slot <= detail::slot::flags::RESUME) [[likely]] {
+			if (slot <= detail::slot::flags::RESUME) [[likely]]
 				// No READ bit was set; RESUME may or may not be set - the
 				// element was successfully inserted, regardless. If the RESUME
 				// bit was set, the corresponding dequeue operation will act
 				// accordingly, once it modifies the slot.
 				return;
-			}
 
 			// Otherwise, the READ bit is set and the slot must be abandoned,
 			// i.e., the dequeue operation finished before the enqueue operation
@@ -79,7 +78,7 @@ queue<T>::enqueue(queue::pointer elem)
 				tail->try_reclaim(idx + 1);
 
 			continue;
-		} else {
+		} else
 			// ** slow path ** no free slot is available in this node, so a new node
 			// has to be appended that attempts to directly insert `elem` in the newly
 			// appended node's first slot and the enqueue procedure is completed on
@@ -91,7 +90,6 @@ queue<T>::enqueue(queue::pointer elem)
 			case detail::advance_tail_res_t::ADVANCED:
 				continue;
 			}
-		}
 	}
 }
 
@@ -101,9 +99,8 @@ queue<T>::dequeue()
 {
 	while (true) {
 		// Check, if the queue is empty.
-		if (this->is_empty()) {
+		if (this->is_empty())
 			return nullptr;
-		}
 
 		// Increment the dequeue index, retrieve the head pointer and previous
 		// index value.
@@ -161,10 +158,9 @@ queue<T>::is_empty() noexcept
 	const auto [tail, enq_idx] = tag_ptr_t { tag_tail }.decompose();
 
 	// If the cached tail is lagging behind, update the cached value.
-	if (cached_tail != tail) {
+	if (cached_tail != tail)
 		this->m_cached_tail.compare_exchange_strong(cached_tail, tail, relaxed,
 			relaxed);
-	}
 
 	return (head == tail && (deq_idx >= NODE_SIZE || enq_idx <= deq_idx));
 }
