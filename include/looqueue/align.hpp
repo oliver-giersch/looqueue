@@ -1,7 +1,7 @@
 #ifndef LOO_QUEUE_ALIGN_HPP
 #define LOO_QUEUE_ALIGN_HPP
 
-#include <cstdint>
+#include <cstddef>
 
 // Reasonable effort approach to detect x86-64 target architecture, where the
 // pre-fetcher fetches two consecutive cache lines by default.

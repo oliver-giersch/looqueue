@@ -5,7 +5,6 @@
 #include <atomic>
 #include <bit>
 #include <cassert>
-#include <limits>
 
 #include "looqueue/queue_fwd.hpp"
 
@@ -88,7 +87,8 @@ namespace detail {
 }
 
 template <typename T>
-struct queue<T>::node_t {
+template <std::size_t NODE_SIZE>
+struct queue<T>::queue_node_t {
 	using ctrl_block_t = detail::ctrl_block_t;
 	using slot_t = detail::slot::slot_t;
 	using atomic_slot_t = detail::slot::atomic_slot_t;
@@ -103,16 +103,16 @@ struct queue<T>::node_t {
 	/* The array of individual slots for storing elements + state bits. */
 	slot_array_t slots {};
 
-	static node_t *
+	static queue_node_t *
 	alloc()
 	{
 		auto [node, is_clean] = cache.alloc();
 		if (node != nullptr && !is_clean)
 			new (node) node_t {};
 		else if (node == nullptr)
-			node = new node_t {};
+			node = new queue_node_t {};
 
-		return reinterpret_cast<node_t *>(node);
+		return reinterpret_cast<queue_node_t *>(node);
 	}
 
 	void

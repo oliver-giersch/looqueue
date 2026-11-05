@@ -5,6 +5,10 @@ The queue is implemented as a header-only library.
 
 [1] O. Giersch and J. Nolte, "Fast and Portable Concurrent FIFO Queues With Deterministic Memory Reclamation", in IEEE Transactions on Parallel and Distributed Systems, vol. 33, no. 3, pp. 604-616, 1 March 2022, doi: 10.1109/TPDS.2021.3097901
 
+## Correctness
+
+For proofs on the algorithm's correctness, see [PROOF.md](PROOF.md).
+
 ## Build
 
 With CMake:
@@ -17,9 +21,15 @@ $ cmake --build build
 With meson:
 
 ```console
-$ meson build
-$ meson compile -C build
+$ meson setup --buildtype=debug .build/debug
+$ meson compile -C .build/debug
 ```
+
+## Notes
+
+The `.clangd` configuration uses the compilation database generated in
+`.build/debug`. Run `meson setup` above before using clangd; if you use another
+build directory, update `CompileFlags.CompilationDatabase` in `.clangd` to match.
 
 With GNU make:
 

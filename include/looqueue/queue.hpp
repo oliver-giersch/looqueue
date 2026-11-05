@@ -1,6 +1,7 @@
 #ifndef LOO_QUEUE_HPP
 #define LOO_QUEUE_HPP
 
+#include <cstdint>
 #include <stdexcept>
 
 #include "looqueue/detail/node.hpp"

@@ -4,12 +4,12 @@ project('looqueue', 'cpp',
   ]
 )
 
+threads = dependency('threads')
+
 # header-only library
 looqueue = declare_dependency(
   include_directories : include_directories('include')
 )
-
-threads = dependency('threads')
 
 test_unit = executable(
   'test_unit',
@@ -22,3 +22,6 @@ test_stress = executable(
   'test/test_stress.cpp',
   dependencies : [threads, looqueue]
 )
+
+test('Unit tests', test_unit)
+test('Stress tests', test_stress)

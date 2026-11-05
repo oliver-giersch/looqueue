@@ -2,7 +2,6 @@
 #define LOO_QUEUE_DETAIL_MARKED_PTR_HPP
 
 #include <cstdint>
-#include <utility>
 
 namespace loo::detail {
 /*
@@ -69,6 +68,18 @@ public:
 
 	void
 	inc_idx(tag_type add = 1)
+	{
+		this->m_marked += add;
+	}
+
+	tag_ptr_t
+	operator+(tag_type add) const
+	{
+		return tag_ptr_t { this->m_marked + add };
+	}
+
+	void
+	operator+=(tag_type add)
 	{
 		this->m_marked += add;
 	}

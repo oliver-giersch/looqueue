@@ -5,7 +5,7 @@ TabWidth: 2
 ContinuationIndentWidth: 2
 AlwaysBreakTemplateDeclarations: Yes
 AllowAllArgumentsOnNextLine: false
-AllowAllParametersOnNextLine: false
+AllowAllParametersOfDeclarationOnNextLine: false
 AlwaysBreakAfterDefinitionReturnType: All
 BinPackArguments: true
 BinPackParameters: true
@@ -14,8 +14,7 @@ PointerAlignment: Right
 BreakBeforeTernaryOperators: true
 AllowShortFunctionsOnASingleLine: Empty
 BreakBeforeBraces: Custom
-IndentNamespace: false
-NamespaceIndent: 0
+NamespaceIndentation: None
 PenaltyBreakAssignment: 0
 
 # public/private/protected start at column 0

@@ -39,11 +39,11 @@ namespace detail {
 			return std::bit_cast<std::uint64_t>(block);
 		}
 
-		std::uint64_t flags : 4;
+		std::uint64_t flags           : 4;
 		std::uint64_t enqueue_current : 15;
-		std::uint64_t enqueue_total : 15;
+		std::uint64_t enqueue_total   : 15;
 		std::uint64_t dequeue_current : 15;
-		std::uint64_t dequeue_total : 15;
+		std::uint64_t dequeue_total   : 15;
 
 		bool
 		can_reclaim() const
@@ -61,7 +61,8 @@ namespace detail {
 		}
 	} __attribute__((packed));
 
-	static_assert(sizeof(ctrl_block_t) == 8, "control block must be 8 bytes");
+	static_assert(sizeof(ctrl_block_t) == 8,
+		"control block size must be 8 bytes");
 }
 }
 

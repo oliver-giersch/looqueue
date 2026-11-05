@@ -2,7 +2,6 @@
 #define LOO_QUEUE_NATIVE_MARKED_PTR_HPP
 
 #include <cstdint>
-#include <utility>
 
 namespace loo::detail {
 /*

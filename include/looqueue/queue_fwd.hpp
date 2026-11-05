@@ -4,7 +4,12 @@
 #include <atomic>
 
 #include "align.hpp"
-#include "detail/native_tag_ptr.hpp"
+
+#if (OPTION_TAG_HIGH == 1)
+#include "looqueue/detail/native_tag_ptr.hpp"
+#else
+#include "looqueue/detail/tag_ptr.hpp"
+#endif /* OPTION_TAG_HIGH */
 
 namespace loo {
 namespace detail {
@@ -15,14 +20,23 @@ namespace detail {
 }
 template <typename T>
 class queue {
+public:
+	using pointer = T *;
+
+private:
 	static_assert(sizeof(T *) == 8,
 		"loo::queue is only compatible with 64-bit architectures");
 	static_assert(alignof(T) >= 4,
 		"all T pointers must be at least 4-byte aligned");
 
-	/* The number of slots for storing individual elements in each node */
-	static constexpr auto NODE_SIZE = std::size_t { 1024 };
-	static constexpr auto TAG_BITS = std::size_t { 16 };
+	/*
+	 * The number of slots for storing individual elements in each node.
+	 *
+	 * NOTE: At 8-byte control blocks and slots and next pointer, this
+	 * value results in nodes that fit neatly into a single 4 KiB page.
+	 */
+	static constexpr auto NODE_SIZE = std::size_t { 510 };
+	static constexpr auto TAG_BITS = std::size_t { 12 };
 
 	static constexpr auto relaxed = std::memory_order_relaxed;
 	static constexpr auto acquire = std::memory_order_acquire;
@@ -32,8 +46,18 @@ class queue {
 	using node_tag_ptr_t = std::uintptr_t;
 	using atomic_node_tag_ptr_t = std::atomic<node_tag_ptr_t>;
 
-	struct node_t;
+	template <std::size_t NODE_SIZE>
+	struct queue_node_t;
+
+	using node_t = queue_node_t<NODE_SIZE>;
+
+	static_assert(sizeof(node_t) <= 4096, "node size must be <= 4 KiB");
+
+#if (OPTION_TAG_HIGH == 1)
 	using tag_ptr_t = typename detail::native_tag_ptr_t<node_t, TAG_BITS>;
+#else
+	using tag_ptr_t = typename detail::tag_ptr_t<node_t, TAG_BITS>;
+#endif /* OPTION_TAG_HIGH */
 
 	/* The head node pointer & dequeue index pair tag pointer. */
 	alignas(CACHE_LINE_ALIGN) atomic_node_tag_ptr_t m_head;
@@ -43,8 +67,6 @@ class queue {
 	alignas(CACHE_LINE_ALIGN) std::atomic<node_t *> m_cached_tail;
 
 public:
-	using pointer = T *;
-
 	/** See PROOF.md for the reasoning behind these constants */
 
 	static constexpr std::size_t MAX_PRODUCER_THREADS

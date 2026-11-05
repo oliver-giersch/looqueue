@@ -1,3 +1,4 @@
+/.cache
 /.vscode
 /cmake-build-*
-/build
+/.build
