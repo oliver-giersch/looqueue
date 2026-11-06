@@ -36,18 +36,18 @@ test_control_block_internals()
 {
 	std::atomic<std::uint64_t> state {};
 
-	loo::detail::ctrl_block_t block {};
+	loo::detail::ctrl_block block {};
 	block.enqueue_current = 123;
 	block.dequeue_current = 56;
 
-	const auto flags = loo::detail::ctrl_block_t::add_flags<
-		loo::detail::ctrl_block_t::counter_kind_t::ENQUEUE>(false, 125);
+	const auto flags = loo::detail::ctrl_block::add_flags<
+		loo::detail::ctrl_block::counter_kind_t::ENQUEUE>(false, 125);
 
 	state.store(std::bit_cast<std::uint64_t>(block));
 	state.fetch_add(flags);
 
 	const auto new_state = state.load();
-	const auto new_block = std::bit_cast<loo::detail::ctrl_block_t>(new_state);
+	const auto new_block = std::bit_cast<loo::detail::ctrl_block>(new_state);
 
 	if (new_block.flags != 0)
 		return 1;

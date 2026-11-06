@@ -1,13 +1,12 @@
 #ifndef LOO_QUEUE_DETAIL_CONTROL_HPP
 #define LOO_QUEUE_DETAIL_CONTROL_HPP
 
-#include <atomic>
 #include <bit>
 #include <cstdint>
 
 namespace loo {
 namespace detail {
-	struct ctrl_block_t {
+	struct ctrl_block {
 		using scalar_t = std::uint64_t;
 
 		enum counter_kind_t : std::uint64_t { ENQUEUE, DEQUEUE };
@@ -20,7 +19,7 @@ namespace detail {
 		static inline constexpr uint64_t
 		add_flags(bool is_verified, std::uint16_t total_count = 0)
 		{
-			ctrl_block_t block {};
+			ctrl_block block {};
 
 			if (is_verified)
 				block.flags = flags::SLOTS_VERIFIED;
@@ -61,7 +60,7 @@ namespace detail {
 		}
 	} __attribute__((packed));
 
-	static_assert(sizeof(ctrl_block_t) == 8,
+	static_assert(sizeof(ctrl_block) == sizeof(ctrl_block::scalar_t),
 		"control block size must be 8 bytes");
 }
 }

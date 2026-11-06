@@ -5,6 +5,7 @@
 #include <atomic>
 #include <bit>
 #include <cassert>
+#include <cstddef>
 
 #include "looqueue/queue_fwd.hpp"
 
@@ -13,37 +14,38 @@
 namespace loo {
 namespace detail {
 	namespace slot {
-		using slot_t = std::uintptr_t;
-		using atomic_slot_t = std::atomic<slot_t>;
+		using slot = std::uintptr_t;
+		using atomic_slot_t = std::atomic<slot>;
 
 		/* The slot state flag constants. */
-		enum flags : slot_t {
-			UNINIT = slot_t { 0 },
-			RESUME = slot_t { 0b01 },
-			READER = slot_t { 0b10 },
+		enum flags : slot {
+			UNINIT = 0,
+			RESUME = 0b01,
+			READER = 0b10,
 			ELEM_MASK = ~(READER | RESUME),
 		};
 
-		/* Returns if the slot must be abandoned. */
+		/* Returns true if the slot must be abandoned. */
 		static constexpr bool
-		is_abandoned(slot_t slot)
+		is_abandoned(slot slot)
 		{
 			return slot == (flags::RESUME | flags::READER);
 		}
 
 		/* Returns true if a slot has been either consumed or abandoned */
 		static constexpr bool
-		is_consumed(slot_t slot)
+		is_consumed(slot slot)
 		{
 			// Check, if READER and any element bits are set.
-			// HACK: this is equivalent to `(slot & READER) && (slot & ELEM_MASK)`,
+			// HACK: this is equivalent to:
+			//     `(slot & READER) && (slot & ELEM_MASK)`,
 			// but GCC 15 compiles slightly better code with this version.
 			return ((slot >= 4) & ((slot >> 1) & 0x1));
 		}
 
 		template <typename T>
 		static constexpr T
-		cast(slot_t slot)
+		cast(slot slot)
 		{
 			const auto bits = slot & flags::ELEM_MASK;
 			return reinterpret_cast<T>(bits);
@@ -84,20 +86,26 @@ namespace detail {
 			return false;
 		}
 	};
+
+	namespace config {
+		inline constexpr std::size_t node_alignment = (!option_tag_high)
+			? std::size_t{ 1 } << tag_bits
+			: 0;
+	}
 }
 
 template <typename T>
 template <std::size_t NODE_SIZE>
-struct queue<T>::queue_node_t {
-	using ctrl_block_t = detail::ctrl_block_t;
-	using slot_t = detail::slot::slot_t;
+struct alignas(detail::config::node_alignment) queue<T>::queue_node_t {
+	using ctrl_block    = detail::ctrl_block;
+	using slot_t        = detail::slot::slot;
 	using atomic_slot_t = detail::slot::atomic_slot_t;
-	using slot_array_t = std::array<atomic_slot_t, NODE_SIZE>;
+	using slot_array_t  = std::array<atomic_slot_t, NODE_SIZE>;
 
 	static inline thread_local detail::tls_cache cache {};
 
 	/* The control block for coordinating memory reclamation. */
-	std::atomic<detail::ctrl_block_t::scalar_t> ctrl {};
+	std::atomic<detail::ctrl_block::scalar_t> ctrl {};
 	/* The pointer to this node's successor. */
 	std::atomic<node_t *> next { nullptr };
 	/* The array of individual slots for storing elements + state bits. */
@@ -185,9 +193,9 @@ struct queue<T>::queue_node_t {
 		if (!verify_slots_consumed(start_idx))
 			return;
 
-		const auto flag = ctrl_block_t::flags::SLOTS_VERIFIED;
+		const auto flag = ctrl_block::flags::SLOTS_VERIFIED;
 		const auto state = flag + this->ctrl.fetch_add(flag, acq_rel);
-		const auto block = std::bit_cast<ctrl_block_t>(state);
+		const auto block = std::bit_cast<ctrl_block>(state);
 
 		if (block.can_reclaim())
 			this->free(false);
@@ -211,11 +219,11 @@ struct queue<T>::queue_node_t {
 	bool
 	increment_enqueue_count(std::uint16_t total_count = 0)
 	{
-		constexpr auto kind = ctrl_block_t::counter_kind_t::ENQUEUE;
+		constexpr auto kind = ctrl_block::counter_kind_t::ENQUEUE;
 
-		const auto flags = ctrl_block_t::add_flags<kind>(false, total_count);
+		const auto flags = ctrl_block::add_flags<kind>(false, total_count);
 		const auto state = flags + this->ctrl.fetch_add(flags, acq_rel);
-		const auto block = std::bit_cast<ctrl_block_t>(state);
+		const auto block = std::bit_cast<ctrl_block>(state);
 
 		return block.can_reclaim();
 	}
@@ -223,11 +231,11 @@ struct queue<T>::queue_node_t {
 	bool
 	increment_dequeue_count(bool is_verified, std::uint16_t total_count = 0)
 	{
-		constexpr auto kind = ctrl_block_t::counter_kind_t::DEQUEUE;
+		constexpr auto kind = ctrl_block::counter_kind_t::DEQUEUE;
 
-		const auto flags = ctrl_block_t::add_flags<kind>(is_verified, total_count);
+		const auto flags = ctrl_block::add_flags<kind>(is_verified, total_count);
 		const auto state = flags + this->ctrl.fetch_add(flags, acq_rel);
-		const auto block = std::bit_cast<ctrl_block_t>(state);
+		const auto block = std::bit_cast<ctrl_block>(state);
 
 		return block.can_reclaim();
 	}

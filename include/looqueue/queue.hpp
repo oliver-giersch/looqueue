@@ -11,7 +11,7 @@ namespace loo {
 template <typename T>
 queue<T>::queue()
 {
-	using slot_t = detail::slot::slot_t;
+	using slot_t = detail::slot::slot;
 
 	// Initially, head and tail point at the same node.
 	const auto head = new node_t();
@@ -53,7 +53,7 @@ queue<T>::enqueue(queue::pointer elem)
 			// exclusively reserved by the previous FAA.
 			// Write the `elem` bits into the slot (exclusive access ensures
 			// this is done exactly once).
-			const auto bits = reinterpret_cast<detail::slot::slot_t>(elem);
+			const auto bits = reinterpret_cast<detail::slot::slot>(elem);
 			// HACK(x86): We use FAA here because FOR is compiled as CAS when
 			// setting more than one bit and/or returning the enitre memory
 			// word. Since only one operation ever writes to the higher bits of

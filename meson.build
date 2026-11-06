@@ -1,8 +1,14 @@
 project('looqueue', 'cpp',
+  version: '0.1.0',
+  meson_version: '>=1.1',
   default_options : [
     'cpp_std=c++20'
   ]
 )
+
+if get_option('tag_high')
+  add_project_arguments('-DOPTION_TAG_HIGH=1', language: 'c')
+endif
 
 threads = dependency('threads')
 
@@ -23,5 +29,5 @@ test_stress = executable(
   dependencies : [threads, looqueue]
 )
 
-test('Unit tests', test_unit)
-test('Stress tests', test_stress)
+test('unit tests', test_unit)
+test('stress tests', test_stress)

@@ -5,6 +5,10 @@
 
 #include "align.hpp"
 
+#ifndef OPTION_TAG_HIGH
+#define OPTION_TAG_HIGH 0
+#endif /* OPTION_TAG_HIGH */
+
 #if (OPTION_TAG_HIGH == 1)
 #include "looqueue/detail/native_tag_ptr.hpp"
 #else
@@ -17,7 +21,13 @@ namespace detail {
 	enum class advance_head_res_t { QUEUE_EMPTY, ADVANCED };
 	/* The result type for `try_advance_tail`. */
 	enum class advance_tail_res_t { ADVANCED, ADVANCED_AND_INSERTED };
+
+	namespace config {
+		inline constexpr bool option_tag_high = OPTION_TAG_HIGH == 1;
+		inline constexpr auto tag_bits = 12;
+	}
 }
+
 template <typename T>
 class queue {
 public:
@@ -36,7 +46,7 @@ private:
 	 * value results in nodes that fit neatly into a single 4 KiB page.
 	 */
 	static constexpr auto NODE_SIZE = std::size_t { 510 };
-	static constexpr auto TAG_BITS = std::size_t { 12 };
+	static constexpr auto TAG_BITS = detail::config::tag_bits;
 
 	static constexpr auto relaxed = std::memory_order_relaxed;
 	static constexpr auto acquire = std::memory_order_acquire;
@@ -57,6 +67,8 @@ private:
 	using tag_ptr_t = typename detail::native_tag_ptr_t<node_t, TAG_BITS>;
 #else
 	using tag_ptr_t = typename detail::tag_ptr_t<node_t, TAG_BITS>;
+	static_assert(alignof(node_t) >= (1ull << TAG_BITS),
+		"node alignment must be >= 4 KiB");
 #endif /* OPTION_TAG_HIGH */
 
 	/* The head node pointer & dequeue index pair tag pointer. */
@@ -119,8 +131,9 @@ private:
 	 * succeeds or the loaded pointer value (failure case) no longer matches
 	 * `old_node`
 	 */
-	static bool bounded_cas_loop(atomic_node_tag_ptr_t &node, tag_ptr_t &expected,
-		tag_ptr_t desired, const node_t *old_node, std::memory_order order);
+	static bool bounded_cas_loop(atomic_node_tag_ptr_t &node,
+		tag_ptr_t &expected, tag_ptr_t desired, const node_t *old_node,
+		std::memory_order order);
 };
 }
 
