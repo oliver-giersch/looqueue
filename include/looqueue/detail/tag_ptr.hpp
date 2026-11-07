@@ -3,6 +3,8 @@
 
 #include <cstdint>
 
+#include "looqueue/def.hpp"
+
 namespace loo::detail {
 /*
  * A tag pointer that stores up to N tag bits in the lower bits of the
@@ -10,33 +12,32 @@ namespace loo::detail {
  * The pointer value must have its lower N bits zeroed, meaning the value
  * pointed at must have 2^N alignment.
  */
-template <typename T, std::uint8_t N>
-class tag_ptr_t final {
+template <typename T, u8 N>
+class tag_ptr final {
 public:
 	using pointer = T *;
-	using tag_type = std::uintptr_t;
+	using tag_type = usize;
 
-	static constexpr std::uintptr_t TAG_BITS = N;
-	static constexpr std::uintptr_t TAG_MASK
-		= (std::uintptr_t { 1 } << TAG_BITS) - std::uintptr_t { 1 };
-	static constexpr std::uintptr_t PTR_MASK = ~TAG_MASK;
-	static constexpr std::uintptr_t ONE = 1ull;
+	static constexpr usize one = 1;
+	static constexpr usize tag_bits = N;
+	static constexpr usize tag_mask = (one << tag_bits) - one;
+	static constexpr usize ptr_mask = ~tag_mask;
 
-	struct decomposed_t {
+	struct decomposed {
 		pointer ptr;
 		tag_type idx;
 	};
 
-	tag_ptr_t() = default;
+	tag_ptr() = default;
 
-	explicit tag_ptr_t(std::uintptr_t marked) : m_marked { marked } { }
+	explicit tag_ptr(tag_type marked) : marked { marked } { }
 
-	explicit tag_ptr_t(pointer ptr, tag_type idx)
-			: tag_ptr_t(reinterpret_cast<std::uintptr_t>(ptr) | idx)
+	explicit tag_ptr(pointer ptr, tag_type idx)
+			: tag_ptr(reinterpret_cast<usize>(ptr) | idx)
 	{
 	}
 
-	decomposed_t
+	decomposed
 	decompose() const
 	{
 		return { this->decompose_ptr(), this->decompose_tag() };
@@ -45,47 +46,47 @@ public:
 	pointer
 	decompose_ptr() const
 	{
-		return reinterpret_cast<pointer>(this->m_marked & PTR_MASK);
+		return reinterpret_cast<pointer>(this->marked & ptr_mask);
 	}
 
 	tag_type
 	decompose_tag() const
 	{
-		return m_marked & TAG_MASK;
+		return marked & tag_mask;
 	}
 
 	std::uintptr_t
 	to_uintptr() const
 	{
-		return this->m_marked;
+		return this->marked;
 	}
 
 	std::uintptr_t &
 	as_uintptr()
 	{
-		return this->m_marked;
+		return this->marked;
 	}
 
 	void
 	inc_idx(tag_type add = 1)
 	{
-		this->m_marked += add;
+		this->marked += add;
 	}
 
-	tag_ptr_t
+	tag_ptr
 	operator+(tag_type add) const
 	{
-		return tag_ptr_t { this->m_marked + add };
+		return tag_ptr { this->marked + add };
 	}
 
 	void
 	operator+=(tag_type add)
 	{
-		this->m_marked += add;
+		this->marked += add;
 	}
 
 private:
-	std::uintptr_t m_marked { 0 };
+	usize marked { 0 };
 };
 }
 

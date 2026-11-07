@@ -5,122 +5,121 @@
 #include <atomic>
 #include <bit>
 #include <cassert>
-#include <cstddef>
+#include <new>
 
+#include "looqueue/def.hpp"
 #include "looqueue/queue_fwd.hpp"
 
 #include "looqueue/detail/control.hpp"
 
 namespace loo {
 namespace detail {
-	namespace slot {
-		using slot = std::uintptr_t;
-		using atomic_slot_t = std::atomic<slot>;
+inline constexpr usize node_alignment
+	= (!config::option_tag_high) ? usize { 1 } << config::tag_bits : 0;
+namespace slot {
+using slot = usize;
+using atomic_slot = std::atomic<slot>;
 
-		/* The slot state flag constants. */
-		enum flags : slot {
-			UNINIT = 0,
-			RESUME = 0b01,
-			READER = 0b10,
-			ELEM_MASK = ~(READER | RESUME),
-		};
+/* The slot state flag constants. */
+enum flags : slot {
+	uninit = 0,
+	resume = 0b01,
+	reader = 0b10,
+	elem_mask = ~(reader | resume),
+};
 
-		/* Returns true if the slot must be abandoned. */
-		static constexpr bool
-		is_abandoned(slot slot)
-		{
-			return slot == (flags::RESUME | flags::READER);
-		}
+/* Returns true if the slot must be abandoned. */
+static constexpr bool
+is_abandoned(slot slot)
+{
+	return slot == (flags::resume | flags::reader);
+}
 
-		/* Returns true if a slot has been either consumed or abandoned */
-		static constexpr bool
-		is_consumed(slot slot)
-		{
-			// Check, if READER and any element bits are set.
-			// HACK: this is equivalent to:
-			//     `(slot & READER) && (slot & ELEM_MASK)`,
-			// but GCC 15 compiles slightly better code with this version.
-			return ((slot >= 4) & ((slot >> 1) & 0x1));
-		}
-
-		template <typename T>
-		static constexpr T
-		cast(slot slot)
-		{
-			const auto bits = slot & flags::ELEM_MASK;
-			return reinterpret_cast<T>(bits);
-		}
-	}
-
-	struct tls_cache {
-		void *node = nullptr;
-		bool clean = false;
-
-		~tls_cache() noexcept
-		{
-			if (this->node != nullptr)
-				::operator delete(this->node);
-		}
-
-		std::pair<void *, bool>
-		alloc() noexcept
-		{
-			if (this->node == nullptr)
-				return { nullptr, false };
-
-			const auto res = std::make_pair(this->node, this->clean);
-			this->node = nullptr;
-			this->clean = false;
-			return res;
-		}
-
-		bool
-		free(void *node, bool is_clean = false) noexcept
-		{
-			if (this->node == nullptr) {
-				this->node = node;
-				this->clean = is_clean;
-				return true;
-			}
-
-			return false;
-		}
-	};
-
-	namespace config {
-		inline constexpr std::size_t node_alignment = (!option_tag_high)
-			? std::size_t{ 1 } << tag_bits
-			: 0;
-	}
+/* Returns true if a slot has been either consumed or abandoned */
+static constexpr bool
+is_consumed(slot slot)
+{
+	// Check, if READER and any element bits are set.
+	// HACK: this is equivalent to:
+	//     `(slot & READER) && (slot & ELEM_MASK)`,
+	// but GCC 15 compiles slightly better code with this version.
+	return ((slot >= 4) & ((slot >> 1) & 0x1));
 }
 
 template <typename T>
-template <std::size_t NODE_SIZE>
-struct alignas(detail::config::node_alignment) queue<T>::queue_node_t {
-	using ctrl_block    = detail::ctrl_block;
-	using slot_t        = detail::slot::slot;
-	using atomic_slot_t = detail::slot::atomic_slot_t;
-	using slot_array_t  = std::array<atomic_slot_t, NODE_SIZE>;
+static constexpr T
+cast(slot slot)
+{
+	const auto bits = slot & flags::elem_mask;
+	return reinterpret_cast<T>(bits);
+}
+}
+
+struct tls_cache {
+	void *node = nullptr;
+	bool clean = false;
+
+	~tls_cache() noexcept
+	{
+		if (this->node == nullptr)
+			return;
+
+		::operator delete(this->node, std::align_val_t { detail::node_alignment });
+	}
+
+	std::pair<void *, bool>
+	alloc() noexcept
+	{
+		if (this->node == nullptr)
+			return { nullptr, false };
+
+		const auto res = std::make_pair(this->node, this->clean);
+		this->node = nullptr;
+		this->clean = false;
+		return res;
+	}
+
+	bool
+	free(void *node, bool is_clean = false) noexcept
+	{
+		if (this->node == nullptr) {
+			this->node = node;
+			this->clean = is_clean;
+			return true;
+		}
+
+		return false;
+	}
+};
+}
+
+template <typename T>
+template <usize N>
+struct alignas(detail::node_alignment) queue<T>::queue_node {
+	using ctrl_block = detail::ctrl_block;
+	using slot = detail::slot::slot;
+	using atomic_slot = detail::slot::atomic_slot;
+	using slot_array = std::array<atomic_slot, node_size>;
 
 	static inline thread_local detail::tls_cache cache {};
 
 	/* The control block for coordinating memory reclamation. */
-	std::atomic<detail::ctrl_block::scalar_t> ctrl {};
+	std::atomic<detail::ctrl_block::scalar> ctrl {};
 	/* The pointer to this node's successor. */
-	std::atomic<node_t *> next { nullptr };
+	std::atomic<node *> next { nullptr };
 	/* The array of individual slots for storing elements + state bits. */
-	slot_array_t slots {};
+	slot_array slots {};
 
-	static queue_node_t *
+	static queue_node *
 	alloc()
 	{
 		auto [node, is_clean] = cache.alloc();
 		if (node != nullptr && !is_clean)
-			new (node) node_t {};
+			new (node) queue_node {};
 		else if (node == nullptr)
-			node = new queue_node_t {};
+			node = new queue_node {};
 
-		return reinterpret_cast<queue_node_t *>(node);
+		return reinterpret_cast<queue_node *>(node);
 	}
 
 	void
@@ -132,17 +131,17 @@ struct alignas(detail::config::node_alignment) queue<T>::queue_node_t {
 	}
 
 	void
-	init(queue::pointer elem)
+	init(pointer elem)
 	{
-		this->slots[0] = reinterpret_cast<slot_t>(elem);
+		this->slots[0] = reinterpret_cast<slot>(elem);
 	}
 
 	pointer
-	consume_slot(std::size_t idx)
+	consume_slot(usize idx)
 	{
 		using detail::slot::flags;
 
-		slot_t state;
+		slot state;
 		pointer res;
 
 		// We spin for a bounded number of times, in order to decrease the
@@ -154,7 +153,7 @@ struct alignas(detail::config::node_alignment) queue<T>::queue_node_t {
 			res = detail::slot::cast<pointer>(state);
 
 			if (res != nullptr) {
-				state = slot.fetch_add(flags::READER, acquire);
+				state = slot.fetch_add(flags::reader, acquire);
 				goto found;
 			}
 		}
@@ -162,7 +161,7 @@ struct alignas(detail::config::node_alignment) queue<T>::queue_node_t {
 		// Check the extracted pointer bits, if the result is null, the deque
 		// thread must have set the READ bit before the pointer bits have been
 		// set by the corresponding enqueue operation, yet.
-		state = slot.fetch_add(flags::READER, acquire);
+		state = slot.fetch_add(flags::reader, acquire);
 		res = detail::slot::cast<pointer>(state);
 
 		// The RESUME bit may be set, but cleanup is not our responsibility,
@@ -172,7 +171,7 @@ struct alignas(detail::config::node_alignment) queue<T>::queue_node_t {
 			return nullptr;
 
 	found:
-		if (state & flags::RESUME) [[unlikely]]
+		if (state & flags::resume) [[unlikely]]
 			this->try_reclaim(idx + 1);
 
 		return res;
@@ -188,12 +187,12 @@ struct alignas(detail::config::node_alignment) queue<T>::queue_node_t {
 	 */
 
 	void
-	try_reclaim(std::size_t start_idx)
+	try_reclaim(usize start_idx)
 	{
 		if (!verify_slots_consumed(start_idx))
 			return;
 
-		const auto flag = ctrl_block::flags::SLOTS_VERIFIED;
+		const auto flag = ctrl_block::flags::all_slots_verified;
 		const auto state = flag + this->ctrl.fetch_add(flag, acq_rel);
 		const auto block = std::bit_cast<ctrl_block>(state);
 
@@ -202,13 +201,13 @@ struct alignas(detail::config::node_alignment) queue<T>::queue_node_t {
 	}
 
 	bool
-	verify_slots_consumed(std::size_t start_idx)
+	verify_slots_consumed(usize start_idx)
 	{
 		using detail::slot::flags;
 
-		for (std::size_t idx = start_idx; idx < NODE_SIZE; ++idx) {
+		for (usize idx = start_idx; idx < node_size; ++idx) {
 			auto &slot = this->slots[idx];
-			const auto old = slot.fetch_add(flags::RESUME, relaxed);
+			const auto old = slot.fetch_add(flags::resume, relaxed);
 			if (!detail::slot::is_consumed(old))
 				return false;
 		}
@@ -217,9 +216,9 @@ struct alignas(detail::config::node_alignment) queue<T>::queue_node_t {
 	}
 
 	bool
-	increment_enqueue_count(std::uint16_t total_count = 0)
+	increment_enqueue_count(u16 total_count = 0)
 	{
-		constexpr auto kind = ctrl_block::counter_kind_t::ENQUEUE;
+		constexpr auto kind = ctrl_block::counter::enqueue;
 
 		const auto flags = ctrl_block::add_flags<kind>(false, total_count);
 		const auto state = flags + this->ctrl.fetch_add(flags, acq_rel);
@@ -229,9 +228,9 @@ struct alignas(detail::config::node_alignment) queue<T>::queue_node_t {
 	}
 
 	bool
-	increment_dequeue_count(bool is_verified, std::uint16_t total_count = 0)
+	increment_dequeue_count(bool is_verified, u16 total_count = 0)
 	{
-		constexpr auto kind = ctrl_block::counter_kind_t::DEQUEUE;
+		constexpr auto kind = ctrl_block::counter::dequeue;
 
 		const auto flags = ctrl_block::add_flags<kind>(is_verified, total_count);
 		const auto state = flags + this->ctrl.fetch_add(flags, acq_rel);

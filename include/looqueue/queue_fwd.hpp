@@ -4,6 +4,7 @@
 #include <atomic>
 
 #include "align.hpp"
+#include "def.hpp"
 
 #ifndef OPTION_TAG_HIGH
 #define OPTION_TAG_HIGH 0
@@ -17,15 +18,15 @@
 
 namespace loo {
 namespace detail {
-	/* The result type for `try_advance_head`. */
-	enum class advance_head_res_t { QUEUE_EMPTY, ADVANCED };
-	/* The result type for `try_advance_tail`. */
-	enum class advance_tail_res_t { ADVANCED, ADVANCED_AND_INSERTED };
+/* The result type for `try_advance_head`. */
+enum class advance_head { empty_queue, advanced };
+/* The result type for `try_advance_tail`. */
+enum class advance_tail { advanced, advanced_and_inserted };
 
-	namespace config {
-		inline constexpr bool option_tag_high = OPTION_TAG_HIGH == 1;
-		inline constexpr auto tag_bits = 12;
-	}
+namespace config {
+inline constexpr auto option_tag_high = OPTION_TAG_HIGH == 1;
+inline constexpr auto tag_bits = 12;
+}
 }
 
 template <typename T>
@@ -34,7 +35,7 @@ public:
 	using pointer = T *;
 
 private:
-	static_assert(sizeof(T *) == 8,
+	static_assert(sizeof(T *) == sizeof(u64),
 		"loo::queue is only compatible with 64-bit architectures");
 	static_assert(alignof(T) >= 4,
 		"all T pointers must be at least 4-byte aligned");
@@ -45,46 +46,55 @@ private:
 	 * NOTE: At 8-byte control blocks and slots and next pointer, this
 	 * value results in nodes that fit neatly into a single 4 KiB page.
 	 */
-	static constexpr auto NODE_SIZE = std::size_t { 510 };
-	static constexpr auto TAG_BITS = detail::config::tag_bits;
+	static constexpr auto node_size = usize { 510 };
+	static constexpr auto tag_bits = detail::config::tag_bits;
 
 	static constexpr auto relaxed = std::memory_order_relaxed;
 	static constexpr auto acquire = std::memory_order_acquire;
 	static constexpr auto release = std::memory_order_release;
 	static constexpr auto acq_rel = std::memory_order_acq_rel;
 
-	using node_tag_ptr_t = std::uintptr_t;
-	using atomic_node_tag_ptr_t = std::atomic<node_tag_ptr_t>;
+	using node_tag_ptr = usize;
+	using atomic_node_tag_ptr = std::atomic<node_tag_ptr>;
 
-	template <std::size_t NODE_SIZE>
-	struct queue_node_t;
+	template <usize N>
+	struct queue_node;
 
-	using node_t = queue_node_t<NODE_SIZE>;
+	using node = queue_node<node_size>;
 
-	static_assert(sizeof(node_t) <= 4096, "node size must be <= 4 KiB");
+	static_assert(sizeof(node) <= 4096, "node size must be <= 4 KiB");
 
 #if (OPTION_TAG_HIGH == 1)
-	using tag_ptr_t = typename detail::native_tag_ptr_t<node_t, TAG_BITS>;
+	using tag_ptr = typename detail::native_tag_ptr_t<node_t, tag_bits>;
 #else
-	using tag_ptr_t = typename detail::tag_ptr_t<node_t, TAG_BITS>;
-	static_assert(alignof(node_t) >= (1ull << TAG_BITS),
+	using tag_ptr = detail::tag_ptr<node, tag_bits>;
+	static_assert(alignof(node) >= (1ull << tag_bits),
 		"node alignment must be >= 4 KiB");
 #endif /* OPTION_TAG_HIGH */
 
-	/* The head node pointer & dequeue index pair tag pointer. */
-	alignas(CACHE_LINE_ALIGN) atomic_node_tag_ptr_t m_head;
-	/* The tail node pointer & enqueue index pair tag pointer. */
-	alignas(CACHE_LINE_ALIGN) atomic_node_tag_ptr_t m_tail;
-	/* The cached value of the last observed tail pointer. */
-	alignas(CACHE_LINE_ALIGN) std::atomic<node_t *> m_cached_tail;
+	struct alignas(detail::cache_alignment) {
+		/* The head node pointer & dequeue index pair tag pointer. */
+		atomic_node_tag_ptr head;
+		std::atomic<u64> head_epoch;
+	};
+
+	struct alignas(detail::cache_alignment) {
+		/* The tail node pointer & enqueue index pair tag pointer. */
+		atomic_node_tag_ptr tail;
+	};
+
+	struct alignas(detail::cache_alignment) {
+		/* The cached value of the last observed tail pointer. */
+		std::atomic<node *> cached_tail;
+	};
 
 public:
 	/** See PROOF.md for the reasoning behind these constants */
 
-	static constexpr std::size_t MAX_PRODUCER_THREADS
-		= (1ull << TAG_BITS) - NODE_SIZE + 1;
-	static constexpr std::size_t MAX_CONSUMER_THREADS
-		= ((1ull << TAG_BITS) - NODE_SIZE + 1) / 2;
+	static constexpr usize max_produce_threads
+		= (usize { 1 } << tag_bits) - node_size + 1;
+	static constexpr usize max_consumer_threads
+		= ((usize { 1 } << tag_bits) - node_size + 1) / 2;
 
 	queue();
 	~queue() noexcept;
@@ -100,11 +110,6 @@ public:
 	queue &operator=(queue &&) = delete;
 
 private:
-	using advance_head_res_t = detail::advance_head_res_t;
-	using advance_tail_res_t = detail::advance_tail_res_t;
-
-	static constexpr auto ONE = tag_ptr_t::ONE;
-
 	/* Returns true if the queue is empty. */
 	bool is_empty() noexcept;
 
@@ -113,27 +118,26 @@ private:
 	 * attempts to append a new node with `elem` stored in the first slot
 	 * otherwise.
 	 */
-	advance_tail_res_t try_advance_tail(tag_ptr_t tag_tail, node_t *tail,
+	detail::advance_tail try_advance_tail(tag_ptr tag_tail, node *tail,
 		pointer elem) noexcept;
 
 	/* Attempts to advance the head node to its successor, if there is one. */
-	advance_head_res_t try_advance_head(tag_ptr_t tag_head, node_t *head,
+	detail::advance_head try_advance_head(tag_ptr tag_head, node *head,
 		bool verify) noexcept;
 
 	/* Loops until the queue's tail is updated by any thread. */
-	bool cas_tail(tag_ptr_t &expected, tag_ptr_t desired, node_t *tail);
+	bool cas_tail(tag_ptr &expected, tag_ptr desired, node *tail);
 
 	/* Loops until the queue's head is updated by any thread. */
-	bool cas_head(tag_ptr_t &expected, tag_ptr_t desired, node_t *head);
+	bool cas_head(tag_ptr &expected, tag_ptr desired, node *head);
 
 	/*
 	 * Loops and attempts to CAS `expected` with `desired` until either the CAS
 	 * succeeds or the loaded pointer value (failure case) no longer matches
 	 * `old_node`
 	 */
-	static bool bounded_cas_loop(atomic_node_tag_ptr_t &node,
-		tag_ptr_t &expected, tag_ptr_t desired, const node_t *old_node,
-		std::memory_order order);
+	static bool bounded_cas_loop(atomic_node_tag_ptr &ptr, tag_ptr &expected,
+		tag_ptr desired, const node *old_node, std::memory_order order);
 };
 }
 

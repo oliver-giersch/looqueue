@@ -1,7 +1,7 @@
 #ifndef LOO_QUEUE_NATIVE_MARKED_PTR_HPP
 #define LOO_QUEUE_NATIVE_MARKED_PTR_HPP
 
-#include <cstdint>
+#include "looqueue/def.hpp"
 
 namespace loo::detail {
 /*
@@ -11,36 +11,34 @@ namespace loo::detail {
  * 0x7FFFFFFFFFFF by convention as of today.
  * This may change in the future, if 5-level paging becomes more common.
  */
-template <typename T, std::uint8_t N>
-class native_tag_ptr_t final {
+template <typename T, u8 N>
+class native_tag_ptr final {
 	static_assert(N <= 16, "only up to 16 tag bits allowed");
 
 public:
 	using pointer = T *;
-	using tag_type = std::uintptr_t;
+	using tag_type = usize;
 
-	static constexpr std::uintptr_t TAG_SHIFT = 64 - 16;
-	static constexpr std::uintptr_t TAG_MASK
-		= std::uintptr_t { 0xFFFF } << TAG_SHIFT;
-	static constexpr std::uintptr_t PTR_MASK = ~TAG_MASK;
-	static constexpr std::uintptr_t ONE = 1ull << TAG_SHIFT;
+	static constexpr usize tag_shift = 64 - 16;
+	static constexpr usize tag_mask = usize { 0xFFFF } << tag_shift;
+	static constexpr usize ptr_mask = ~tag_mask;
+	static constexpr usize one = 1ull << tag_shift;
 
-	struct decomposed_t {
+	struct decomposed {
 		pointer ptr;
 		tag_type idx;
 	};
 
-	native_tag_ptr_t() = default;
+	native_tag_ptr() = default;
 
-	explicit native_tag_ptr_t(std::uintptr_t marked) : m_marked { marked } { }
+	explicit native_tag_ptr(tag_type marked) : marked { marked } { }
 
-	explicit native_tag_ptr_t(pointer ptr, tag_type idx)
-			: native_tag_ptr_t { idx << TAG_SHIFT
-				| reinterpret_cast<std::uintptr_t>(ptr) }
+	explicit native_tag_ptr(pointer ptr, tag_type idx)
+			: native_tag_ptr { idx << tag_shift | reinterpret_cast<tag_type>(ptr) }
 	{
 	}
 
-	decomposed_t
+	decomposed
 	decompose() const
 	{
 		return { this->decompose_ptr(), this->decompose_tag() };
@@ -49,47 +47,47 @@ public:
 	pointer
 	decompose_ptr() const
 	{
-		return reinterpret_cast<pointer>(this->m_marked & PTR_MASK);
+		return reinterpret_cast<pointer>(this->marked & ptr_mask);
 	}
 
 	tag_type
 	decompose_tag() const
 	{
-		return m_marked >> TAG_SHIFT;
+		return marked >> tag_shift;
 	}
 
 	std::uintptr_t
 	to_uintptr() const
 	{
-		return this->m_marked;
+		return this->marked;
 	}
 
 	std::uintptr_t &
 	as_uintptr()
 	{
-		return this->m_marked;
+		return this->marked;
 	}
 
 	void
 	inc_idx(tag_type add = 1)
 	{
-		this->m_marked += (add << TAG_SHIFT);
+		this->marked += (add << tag_shift);
 	}
 
-	native_tag_ptr_t
+	native_tag_ptr
 	operator+(tag_type add) const
 	{
-		return native_tag_ptr_t { this->m_marked + (add << TAG_SHIFT) };
+		return native_tag_ptr { this->marked + (add << tag_shift) };
 	}
 
 	void
 	operator+=(tag_type add)
 	{
-		this->m_marked += (add << TAG_SHIFT);
+		this->marked += (add << tag_shift);
 	}
 
 private:
-	std::uintptr_t m_marked { 0 };
+	usize marked { 0 };
 };
 }
 

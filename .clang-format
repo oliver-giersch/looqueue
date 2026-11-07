@@ -1,21 +1,23 @@
 BasedOnStyle: WebKit
 UseTab: Always
+ColumnLimit: 80
+PenaltyBreakAssignment: 0
 IndentWidth: 2
 TabWidth: 2
 ContinuationIndentWidth: 2
-AlwaysBreakTemplateDeclarations: Yes
+
+BreakTemplateDeclarations: Yes
 AllowAllArgumentsOnNextLine: false
 AllowAllParametersOfDeclarationOnNextLine: false
-AlwaysBreakAfterDefinitionReturnType: All
+BreakAfterReturnType: Automatic
 BinPackArguments: true
 BinPackParameters: true
-ColumnLimit: 80
-PointerAlignment: Right
+BreakBeforeBinaryOperators: NonAssignment
 BreakBeforeTernaryOperators: true
+PointerAlignment: Right
 AllowShortFunctionsOnASingleLine: Empty
 BreakBeforeBraces: Custom
 NamespaceIndentation: None
-PenaltyBreakAssignment: 0
 
 # public/private/protected start at column 0
 AccessModifierOffset: -2
