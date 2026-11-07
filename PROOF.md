@@ -75,7 +75,8 @@ We are thereby able to prove that an overflow of the index bits into the pointer
 
 **Definition 2.1** Let $P$ be number of *all* producer threads accessing the same queue and $2^B - 1$ the largest possible integer value that fits into the tag bits of the composed $(tail, index)$ pair without overflowing.
 
-**Lemma 2.1** The largest value the enqueue index can possibly assume is $P + N$ and it follows, that with any $P \leq 2^B - N - 1$ the enqueue index can never overflow.
+**Lemma 2.1** The enqueue index of any node is at most $N + P$.
+Therefore, $P \leq 2^B - N - 1$ is a sufficient condition to prevent enqueue-index overflows.
 
 **Proof.** Assume that the current value of the enqueue index is $N$, which means that there have been $N$ previous increments which resulted in fast path operations that can unconditionally enqueue another element or retry after concluding (e.g., due to having to abandon the reserved slot).
 Subsequently, there can hence be at most $P$ further concurrent enqueue attempts (one per producer thread), all of which must necessarily enter the slow path.
@@ -90,7 +91,9 @@ By equating this guaranteed upper bound with the largest *possible* index value 
 
 **Definition 2.2** Let $C$ be number of *all* consumer threads accessing the same queue and $2^B - 1$ the largest possible integer value that fits into the tag bits of the composed $(head, index)$ tuple without overflowing.
 
-**Lemma 2.2** The largest possible value the dequeue index can possibly assume is $2 \cdot C + N - 1$ and it follows, that with any $C \leq \frac{2^B - N - 1}{2}$ the dequeue index can never overflow.
+**Lemma 2.2.** The dequeue index of any node is at most $N + 2C$.
+Therefore, $C \leq \lfloor \frac{2^B - N - 1}{2} \rfloor$ is a sufficient
+condition to prevent dequeue-index overflow.
 
 **Proof.** Assume that the current value of the dequeue index is $N - 1$, which means that there have been $N - 1$ previous increments which resulted in fast path operations, i.e., those that unconditionally may attempt to dequeue another element or retry.
 Additionally, the queue's head and tail nodes currently point at the same node and the enqueue index is some value $E \ge N$, i.e., all slots have already been either written to or abandoned.
@@ -100,7 +103,7 @@ Further assume that there are exactly $C$ subsequent concurrent dequeue attempts
 All must pass the *empty* check at line D5 before the first operation increments the $(head,index)$ pair index, as otherwise all follow-on operations would observe an empty queue without incrementing the index.
 All $C$ threads must subsequently enter the slow path and perform a second *empty* check at line H2.
 Assuming that either no enqueue operation has appended a new tail node or that a new node has been appended but the tail pointer not yet been swung forward, all $C$ threads will assess the queue to be empty.
-The value of the dequeue index is now $N + C$, but all $C$ consumers may yet initiate another dequeue operation for the same $(head,index)$ tuple.
+The value of the dequeue index is *at most* $N + C$, but all $C$ consumers may yet initiate another dequeue operation for the same $(head,index)$ tuple.
 However, none may pass the first *empty* check at line D5 again or increment the dequeue index *until* the queue's tail pointer has been updated by a corresponding enqueue operation.
 The tail pointer is exclusively updated only *after* a new node has already been appended (see lines T4 and T10).
 Once any of the $C$ additional dequeue operation are permitted to move past the *empty* check at line D5, the current head node's next pointer is guaranteed to be no longer `NULL`.

@@ -5,11 +5,9 @@
 
 namespace loo::detail {
 /*
- * A tag pointer that stores up to N tag bits in the upper 16 bits of the
- * pointer word.
- * On x86-64 in Linux, all virtual user addresses are naturally below
- * 0x7FFFFFFFFFFF by convention as of today.
- * This may change in the future, if 5-level paging becomes more common.
+ * This representation requires internal node addresses below 2^48.
+ * Linux normally allocates within that range *by default*, but does not
+ * guarantee it for arbitrary allocators or mappings.
  */
 template <typename T, u8 N>
 class native_tag_ptr final {
@@ -38,50 +36,42 @@ public:
 	{
 	}
 
-	decomposed
-	decompose() const
+	decomposed decompose() const
 	{
 		return { this->decompose_ptr(), this->decompose_tag() };
 	}
 
-	pointer
-	decompose_ptr() const
+	pointer decompose_ptr() const
 	{
 		return reinterpret_cast<pointer>(this->marked & ptr_mask);
 	}
 
-	tag_type
-	decompose_tag() const
+	tag_type decompose_tag() const
 	{
 		return marked >> tag_shift;
 	}
 
-	std::uintptr_t
-	to_uintptr() const
+	usize to_uintptr() const
 	{
 		return this->marked;
 	}
 
-	std::uintptr_t &
-	as_uintptr()
+	usize &as_uintptr()
 	{
 		return this->marked;
 	}
 
-	void
-	inc_idx(tag_type add = 1)
+	void inc_idx(tag_type add = 1)
 	{
 		this->marked += (add << tag_shift);
 	}
 
-	native_tag_ptr
-	operator+(tag_type add) const
+	native_tag_ptr operator+(tag_type add) const
 	{
 		return native_tag_ptr { this->marked + (add << tag_shift) };
 	}
 
-	void
-	operator+=(tag_type add)
+	void operator+=(tag_type add)
 	{
 		this->marked += (add << tag_shift);
 	}

@@ -65,36 +65,30 @@ private:
 	static_assert(sizeof(node) <= 4096, "node size must be <= 4 KiB");
 
 #if (OPTION_TAG_HIGH == 1)
-	using tag_ptr = typename detail::native_tag_ptr_t<node_t, tag_bits>;
+	using tag_ptr = detail::native_tag_ptr<node, tag_bits>;
 #else
 	using tag_ptr = detail::tag_ptr<node, tag_bits>;
 	static_assert(alignof(node) >= (1ull << tag_bits),
 		"node alignment must be >= 4 KiB");
 #endif /* OPTION_TAG_HIGH */
 
-	struct alignas(detail::cache_alignment) {
-		/* The head node pointer & dequeue index pair tag pointer. */
-		atomic_node_tag_ptr head;
-		std::atomic<u64> head_epoch;
-	};
+	/* The head node pointer & dequeue index pair tag pointer. */
+	alignas(detail::cache_alignment) atomic_node_tag_ptr head;
+	/* The head node epoch counter (same cache-line as head). */
+	std::atomic<u64> head_epoch;
 
-	struct alignas(detail::cache_alignment) {
-		/* The tail node pointer & enqueue index pair tag pointer. */
-		atomic_node_tag_ptr tail;
-	};
+	/* The tail node pointer & enqueue index pair tag pointer. */
+	alignas(detail::cache_alignment) atomic_node_tag_ptr tail;
 
-	struct alignas(detail::cache_alignment) {
-		/* The cached value of the last observed tail pointer. */
-		std::atomic<node *> cached_tail;
-	};
+	/* The cached value of the last observed tail pointer. */
+	alignas(detail::cache_alignment) std::atomic<node *> cached_tail;
 
 public:
 	/** See PROOF.md for the reasoning behind these constants */
 
-	static constexpr usize max_produce_threads
-		= (usize { 1 } << tag_bits) - node_size + 1;
-	static constexpr usize max_consumer_threads
-		= ((usize { 1 } << tag_bits) - node_size + 1) / 2;
+	static constexpr usize max_producer_threads =
+		(usize { 1 } << tag_bits) - node_size - 1;
+	static constexpr usize max_consumer_threads = max_producer_threads / 2;
 
 	queue();
 	~queue() noexcept;
@@ -119,17 +113,11 @@ private:
 	 * otherwise.
 	 */
 	detail::advance_tail try_advance_tail(tag_ptr tag_tail, node *tail,
-		pointer elem) noexcept;
+		pointer elem);
 
 	/* Attempts to advance the head node to its successor, if there is one. */
 	detail::advance_head try_advance_head(tag_ptr tag_head, node *head,
 		bool verify) noexcept;
-
-	/* Loops until the queue's tail is updated by any thread. */
-	bool cas_tail(tag_ptr &expected, tag_ptr desired, node *tail);
-
-	/* Loops until the queue's head is updated by any thread. */
-	bool cas_head(tag_ptr &expected, tag_ptr desired, node *head);
 
 	/*
 	 * Loops and attempts to CAS `expected` with `desired` until either the CAS
@@ -138,6 +126,24 @@ private:
 	 */
 	static bool bounded_cas_loop(atomic_node_tag_ptr &ptr, tag_ptr &expected,
 		tag_ptr desired, const node *old_node, std::memory_order order);
+
+	/* Loops until the queue's tail is updated by any thread. */
+	inline bool cas_tail(tag_ptr &expected, tag_ptr desired, node *tail)
+	{
+		return bounded_cas_loop(this->tail, expected, desired, tail, release);
+	}
+
+	/* Loops until the queue's head is updated by any thread. */
+	inline bool cas_head(tag_ptr &expected, tag_ptr desired, node *head)
+	{
+		return bounded_cas_loop(this->head, expected, desired, head, release);
+	}
+
+	/* Attempts once to CAS the cached tail if it equals the current head. */
+	inline void cas_cached_tail(node *head, node *tail)
+	{
+		this->cached_tail.compare_exchange_strong(head, tail, release, relaxed);
+	}
 };
 }
 

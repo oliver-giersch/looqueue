@@ -7,7 +7,7 @@ project(
 )
 
 if get_option('tag_high')
-  add_project_arguments('-DOPTION_TAG_HIGH=1', language: 'c')
+  add_project_arguments('-DOPTION_TAG_HIGH=1', language: 'cpp')
 endif
 
 threads = dependency('threads')

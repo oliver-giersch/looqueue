@@ -25,17 +25,17 @@ $ meson setup --buildtype=debug .build/debug
 $ meson compile -C .build/debug
 ```
 
-## Notes
-
-The `.clangd` configuration uses the compilation database generated in
-`.build/debug`. Run `meson setup` above before using clangd; if you use another
-build directory, update `CompileFlags.CompilationDatabase` in `.clangd` to match.
-
 With GNU make:
 
 ```console
 $ make
 ```
+
+## Notes
+
+The [.clangd](.clangd) configuration uses the compilation database generated in
+`.build/debug`.
+Run `meson setup` above before using clangd; if you use another build directory, update `CompileFlags.CompilationDatabase` in [.clangd](.clangd) to match.
 
 ## License
 

@@ -24,7 +24,7 @@ template <typename T>
 queue<T>::~queue() noexcept
 {
 	// Deallocate all remaining nodes in the queue.
-	auto curr = tag_ptr(this->head.load(relaxed)).decompose_ptr();
+	auto curr = tag_ptr { this->head.load(relaxed) }.decompose_ptr();
 	while (curr != nullptr) {
 		auto next = curr->next.load(relaxed);
 		delete curr;
@@ -81,10 +81,10 @@ void queue<T>::enqueue(pointer elem)
 		}
 
 		// ** slow path ** no free slot is available in this node, so a new node
-		// has to be appended that attempts to directly insert `elem` in the newly
-		// appended node's first slot and the enqueue procedure is completed on
-		// success; in any case `tail` points at some successor node when this
-		// sub-procedure completes
+		// has to be appended that attempts to directly insert `elem` in the
+		// newly appended node's first slot and the enqueue procedure is
+		// completed on success; in any case `tail` points at some successor
+		// node when this function completes.
 		switch (this->try_advance_tail(tag_tail + 1, tail, elem)) {
 		case detail::advance_tail::advanced_and_inserted:
 			return;
@@ -144,7 +144,7 @@ bool queue<T>::is_empty() noexcept
 		// higher chance of still having ownership, in which case the FAA can
 		// retire much faster.
 		const auto head_epoch = this->head_epoch.fetch_add(0, acquire);
-		const auto tag_head = tag_ptr { this->head.load(relaxed) };
+		const auto tag_head = tag_ptr { this->head.load(acquire) };
 		const auto [head, deq_idx] = tag_head.decompose();
 
 #ifdef LOO_QUEUE_TEST_HEAD_SNAPSHOT
@@ -156,7 +156,7 @@ bool queue<T>::is_empty() noexcept
 		// The cached tail is allowed to lag behind the actual tail, it is only
 		// used as a means to avoid having to read the highly contended tail
 		// variable, in cases where there is more than one node in the list.
-		const auto cached = this->cached_tail.load(relaxed);
+		const auto cached = this->cached_tail.load(acquire);
 		if (head != cached) {
 			if (this->head_epoch.load(relaxed) != head_epoch) [[unlikely]]
 				continue;
@@ -164,7 +164,7 @@ bool queue<T>::is_empty() noexcept
 			return false;
 		}
 
-		const auto tag_tail = this->tail.load(relaxed);
+		const auto tag_tail = this->tail.load(acquire);
 		const auto [tail, enq_idx] = tag_ptr { tag_tail }.decompose();
 
 #ifdef LOO_QUEUE_TEST_TAIL_SNAPSHOT
@@ -180,7 +180,7 @@ bool queue<T>::is_empty() noexcept
 
 template <typename T>
 detail::advance_tail queue<T>::try_advance_tail(tag_ptr tag_tail, node *tail,
-	pointer elem) noexcept
+	pointer elem)
 {
 	/* The RAII guard for ensuring node reference counting and reclamation. */
 	struct reclaimer {
@@ -204,19 +204,18 @@ detail::advance_tail queue<T>::try_advance_tail(tag_ptr tag_tail, node *tail,
 	// before us.
 	// In this case we must free the allocated node which is cheap because it is
 	// simply cached in thread-local storage.
-	node *next = nullptr;
-	const auto node = node::alloc();
-	node->init(elem);
+	const auto new_node = node::alloc();
+	new_node->init(elem);
 
 	auto advanced = detail::advance_tail::advanced;
-
+	node *next = nullptr;
 	const auto success =
-		tail->next.compare_exchange_strong(next, node, release, relaxed);
+		tail->next.compare_exchange_strong(next, new_node, acq_rel, acquire);
 	if (success) {
-		next = node;
+		next = new_node;
 		advanced = detail::advance_tail::advanced_and_inserted;
 	} else
-		node->free(true);
+		new_node->free(true);
 
 	// Now advance the queue's tail pointer to either our allocated and inserted
 	// node or the actual next node observed during the previous CAS.
@@ -236,8 +235,7 @@ detail::advance_tail queue<T>::try_advance_tail(tag_ptr tag_tail, node *tail,
 
 	// Finally, try update the cached tail pointer.
 	// We don't care, which thread succeeds in advancing the cached tail.
-	auto expected = tail;
-	this->cached_tail.compare_exchange_strong(expected, next, release, relaxed);
+	this->cas_cached_tail(tail, next);
 
 	return advanced;
 }
@@ -267,12 +265,11 @@ detail::advance_head queue<T>::try_advance_head(tag_ptr tag_head, node *head,
 	const tag_ptr tag_tail { this->tail.load(acquire) };
 	const auto tail = tag_tail.decompose_ptr();
 
-	if (head == tag_tail.decompose_ptr())
+	if (head == tail)
 		return detail::advance_head::empty_queue;
 
 	// ...
-	auto expected = head;
-	this->cached_tail.compare_exchange_strong(expected, tail, relaxed, relaxed);
+	this->cas_cached_tail(head, tail);
 
 	// The the head's next pointer, which was set before the tail was updated.
 	const auto next = head->next.load(acquire);
@@ -290,18 +287,6 @@ detail::advance_head queue<T>::try_advance_head(tag_ptr tag_head, node *head,
 }
 
 template <typename T>
-bool queue<T>::cas_tail(tag_ptr &expected, tag_ptr desired, node *tail)
-{
-	return bounded_cas_loop(this->tail, expected, desired, tail, release);
-}
-
-template <typename T>
-bool queue<T>::cas_head(tag_ptr &expected, tag_ptr desired, node *head)
-{
-	return bounded_cas_loop(this->head, expected, desired, head, release);
-}
-
-template <typename T>
 bool queue<T>::bounded_cas_loop(atomic_node_tag_ptr &ptr, tag_ptr &expected,
 	tag_ptr desired, const node *old_node, std::memory_order order)
 {
@@ -315,7 +300,7 @@ bool queue<T>::bounded_cas_loop(atomic_node_tag_ptr &ptr, tag_ptr &expected,
 		// If the CAS failed but the pointer value no longer matches the
 		// previous one, another thread must have updated the pointer, rather
 		// than just incremented the index.
-		if (exp.decompose_ptr() != old_node)
+		if (expected.decompose_ptr() != old_node)
 			return false;
 	}
 
