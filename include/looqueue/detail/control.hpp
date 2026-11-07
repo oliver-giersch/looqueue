@@ -7,20 +7,22 @@
 
 namespace loo {
 namespace detail {
-struct ctrl_block {
+struct _ctrl_block {
 	using scalar = u64;
 
-	enum counter : u64 { enqueue, dequeue };
+	enum counter : u64 {
+		enqueue = 0,
+		dequeue = 1,
+	};
 
 	enum flags : u64 {
 		all_slots_verified = 0x1,
 	};
 
 	template <counter kind>
-	static inline constexpr u64
-	add_flags(bool is_verified, u64 total_count = 0)
+	static inline constexpr u64 add_flags(bool is_verified, u64 total_count = 0)
 	{
-		ctrl_block block {};
+		_ctrl_block block {};
 
 		if (is_verified)
 			block.flags = flags::all_slots_verified;
@@ -45,8 +47,7 @@ struct ctrl_block {
 	u64 dequeue_current : 15;
 	u64 dequeue_total : 15;
 
-	bool
-	can_reclaim() const
+	bool can_reclaim() const
 	{
 		if ((this->flags & flags::all_slots_verified) == 0)
 			return false;
@@ -60,6 +61,86 @@ struct ctrl_block {
 		return true;
 	}
 } __attribute__((packed));
+
+struct ctrl_block {
+	using scalar = u64;
+
+	u64 bits = 0;
+
+	enum counter : u64 {
+		enqueue = 0,
+		dequeue = 1,
+	};
+
+	enum flags : u64 {
+		all_slots_verified = 0x1,
+	};
+
+	enum : u64 {
+		flags_mask = 0xF,
+		count_mask = 0x7FFF,
+		flags_shift = 4,
+		count_shift = 15,
+	};
+
+	struct shifts {
+		template <counter kind>
+		static inline constexpr u64 current =
+			flags_shift + (2 * u64 { kind } * count_shift);
+
+		template <counter kind>
+		static inline constexpr u64 total = current<kind> + count_shift;
+	};
+
+	template <counter kind>
+	static inline constexpr u64 add_flags(bool is_verified, u64 total_count = 0)
+	{
+		u64 bits = is_verified ? flags::all_slots_verified : 0;
+		bits |= u64 { 1 } << shifts::current<kind>;
+		bits |= (total_count & count_mask) << shifts::total<kind>;
+
+		return (bits);
+	}
+
+	inline constexpr u8 flags() const
+	{
+		return static_cast<u8>(this->bits & flags_mask);
+	}
+
+	template <counter kind>
+	inline constexpr u16 current_count() const
+	{
+		const auto count = this->bits >> shifts::current<kind>;
+
+		return static_cast<u16>(count & count_mask);
+	}
+
+	template <counter kind>
+	inline constexpr u16 total_count() const
+	{
+		const auto count = this->bits >> shifts::total<kind>;
+
+		return static_cast<u16>(count & count_mask);
+	}
+
+	bool can_reclaim() const
+	{
+		if ((this->flags() & flags::all_slots_verified) == 0)
+			return false;
+
+		const auto enqueue_total = this->total_count<enqueue>();
+		const auto dequeue_total = this->total_count<dequeue>();
+
+		if (enqueue_total == 0 || dequeue_total == 0)
+			return false;
+		if (this->current_count<enqueue>() != enqueue_total)
+			return false;
+		if (this->current_count<dequeue>() != dequeue_total)
+			return false;
+
+		return true;
+	}
+};
 
 static_assert(sizeof(ctrl_block) == sizeof(ctrl_block::scalar),
 	"control block size must be 8 bytes");

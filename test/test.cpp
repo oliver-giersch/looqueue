@@ -53,30 +53,50 @@ int main()
 
 static int test_control_block_internals()
 {
-	std::atomic<std::uint64_t> state { };
+	using ctrl_block = loo::detail::ctrl_block;
+	constexpr auto enqueue = ctrl_block::counter::enqueue;
+	constexpr auto dequeue = ctrl_block::counter::dequeue;
+	constexpr auto enqueue_step = ctrl_block::add_flags<enqueue>(false);
+	constexpr auto dequeue_step = ctrl_block::add_flags<dequeue>(false);
 
-	loo::detail::ctrl_block block { };
-	block.enqueue_current = 123;
-	block.dequeue_current = 56;
+	// Build the initial counts using the same deltas as completed operations.
+	std::atomic<ctrl_block::scalar> state {
+		123 * enqueue_step + 56 * dequeue_step,
+	};
+	state.fetch_add(ctrl_block::add_flags<enqueue>(false, 125));
 
-	const auto flags = loo::detail::ctrl_block::add_flags<
-		loo::detail::ctrl_block::counter::enqueue>(false, 125);
+	const auto new_block = std::bit_cast<ctrl_block>(state.load());
 
-	state.store(std::bit_cast<std::uint64_t>(block));
-	state.fetch_add(flags);
-
-	const auto new_state = state.load();
-	const auto new_block = std::bit_cast<loo::detail::ctrl_block>(new_state);
-
-	if (new_block.flags != 0)
+	if (new_block.flags() != 0)
 		return 1;
-	if (new_block.enqueue_current != 124)
+	if (new_block.current_count<enqueue>() != 124)
 		return 1;
-	if (new_block.enqueue_total != 125)
+	if (new_block.total_count<enqueue>() != 125)
 		return 1;
-	if (new_block.dequeue_current != 56)
+	if (new_block.current_count<dequeue>() != 56)
 		return 1;
-	if (new_block.dequeue_total != 0)
+	if (new_block.total_count<dequeue>() != 0)
+		return 1;
+	if (new_block.can_reclaim())
+		return 1;
+
+	// Verification and all dequeue completions must not reclaim while an
+	// enqueue completion is still outstanding.
+	state.fetch_add(ctrl_block::add_flags<dequeue>(true, 57));
+	const auto verified = std::bit_cast<ctrl_block>(state.load());
+	if (verified.flags() != ctrl_block::flags::all_slots_verified)
+		return 1;
+	if (verified.current_count<enqueue>() != 124
+		|| verified.total_count<enqueue>() != 125)
+		return 1;
+	if (verified.current_count<dequeue>() != 57
+		|| verified.total_count<dequeue>() != 57)
+		return 1;
+	if (verified.can_reclaim())
+		return 1;
+
+	state.fetch_add(enqueue_step);
+	if (!std::bit_cast<ctrl_block>(state.load()).can_reclaim())
 		return 1;
 	return 0;
 }
@@ -84,7 +104,7 @@ static int test_control_block_internals()
 static int test_one_enqueue_dequeue()
 {
 	int elem = 4711;
-	loo::queue<int> queue { };
+	loo::queue<int> queue {};
 
 	queue.enqueue(&elem);
 
@@ -102,7 +122,7 @@ static int test_half_drain_one_node()
 {
 	int elems[500];
 
-	loo::queue<int> queue { };
+	loo::queue<int> queue {};
 
 	for (auto i = 0; i < 500; ++i) {
 		elems[i] = i;
@@ -127,7 +147,7 @@ static int test_drain_one_node()
 {
 	int elems[1025];
 
-	loo::queue<int> queue { };
+	loo::queue<int> queue {};
 
 	for (auto i = 0; i < 1025; ++i) {
 		elems[i] = i;
